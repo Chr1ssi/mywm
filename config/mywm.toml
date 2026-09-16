@@ -1,0 +1,37 @@
+# Feste Workspaces pro Monitor (1 bis 9); Änderungen gelten nach Neustart.
+workspaces = 9
+# Fenster mit Elternfenster (z. B. Dateidialoge) standardmäßig frei schwebend.
+float_dialogs = true
+# Programm und Argumente getrennt, ohne Shell-Auswertung.
+terminal = ["kitty"]
+
+[bindings]
+terminal = ["Super+Return"]
+close = ["Super+q"]
+exit = ["Super+m"]
+toggle_floating = ["Super+v"]
+# Mit linker Maustaste verschieben, mit rechter skalieren (nur Floating).
+pointer_modifiers = "Super"
+focus_left = ["Super+h", "Super+Left"]
+focus_right = ["Super+l", "Super+Right"]
+move_left = ["Super+Shift+h", "Super+Shift+Left"]
+move_right = ["Super+Shift+l", "Super+Shift+Right"]
+# Zusammen mit den Ziffern 1 bis workspaces.
+workspace_modifiers = "Super"
+move_to_workspace_modifiers = "Super+Shift"
+
+# Regeln gelten beim ersten Einordnen eines Fensters, nicht bei späteren Änderungen.
+# App-IDs werden beim Start einer Anwendung im mywm-Log ausgegeben.
+# Alle angegebenen Selektoren müssen exakt passen; letzte Angabe je Eigenschaft gewinnt.
+#
+# [[rules]]
+# app_id = "firefox"
+# workspace = 2
+#
+# [[rules]]
+# app_id = "org.gnome.Calculator"
+# floating = true
+#
+# [[rules]]
+# dialog = true
+# floating = true

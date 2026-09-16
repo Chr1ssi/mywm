@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+wm_binary=${MYWM_BINARY:-"$project_dir/target/debug/mywm"}
+monitor_config=${MYWM_MONITOR_CONFIG:-"$project_dir/config/kanshi.conf"}
+# Eine persönliche Konfiguration hat Vorrang vor dem Projektbeispiel.
+user_config="${XDG_CONFIG_HOME:-$HOME/.config}/mywm/config.toml"
+if [[ ! -v MYWM_CONFIG && ! -f $user_config ]]; then
+    export MYWM_CONFIG="$project_dir/config/mywm.toml"
+fi
+
+if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
+    echo 'river-init muss innerhalb von River gestartet werden (river -c ...).' >&2
+    exit 1
+fi
+if ! command -v kanshi >/dev/null 2>&1; then
+    echo 'Kanshi fehlt. Installieren mit: sudo pacman -S --needed kanshi' >&2
+    exit 1
+fi
+if [[ ! -x $wm_binary ]]; then
+    echo "mywm fehlt oder ist nicht ausführbar: $wm_binary. Zuerst cargo build ausführen." >&2
+    exit 1
+fi
+if [[ ! -r $monitor_config ]]; then
+    echo "Monitorkonfiguration nicht lesbar: $monitor_config" >&2
+    exit 1
+fi
+
+children=()
+cleanup() {
+    trap - EXIT INT TERM
+    if (( ${#children[@]} )); then
+        kill "${children[@]}" 2>/dev/null || true
+        wait "${children[@]}" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+kanshi -c "$monitor_config" &
+children+=("$!")
+"$wm_binary" &
+children+=("$!")
+
+# Beide Prozesse gehören zu dieser River-Sitzung. Beim Ende eines Prozesses
+# wird auch der andere beendet, damit kein alter Kanshi-Prozess zurückbleibt.
+status=0
+wait -n "${children[@]}" || status=$?
+echo "Ein Sitzungsprozess wurde beendet (Status $status); mywm/Kanshi werden gestoppt." >&2
+exit "$status"
