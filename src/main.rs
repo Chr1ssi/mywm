@@ -1,6 +1,7 @@
 mod appearance;
 mod config;
 mod floating;
+mod fullscreen;
 mod ipc;
 mod keyboard;
 mod layer_shell;
@@ -42,6 +43,8 @@ struct Window {
     geometry: Option<(i32, i32, i32, i32)>,
     output: Option<usize>,
     floating: bool,
+    fullscreen: bool,
+    fullscreen_output: Option<ObjectId>,
     floating_rect: Option<Rect>,
     border_width: i32,
     app_id: Option<String>,
@@ -178,7 +181,7 @@ fn update_drag(state: &mut State) {
     let Some(index) = state
         .windows
         .iter()
-        .position(|w| w.river_window.id() == id && w.floating)
+        .position(|w| w.river_window.id() == id && w.floating && !w.fullscreen)
     else {
         return;
     };
@@ -752,6 +755,8 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     geometry: None,
                     output: None,
                     floating: false,
+                    fullscreen: false,
+                    fullscreen_output: None,
                     floating_rect: None,
                     border_width: 0,
                     app_id: None,
@@ -817,6 +822,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                 }
                 update_drag(state);
                 layout(state);
+                fullscreen::apply(state);
                 for window in &mut state.windows {
                     // The WM supplies focus borders, but no title bar.
                     window.river_window.use_ssd();
@@ -825,6 +831,9 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                         window.node = Some(node);
                     }
 
+                    if window.fullscreen_output.is_some() {
+                        continue;
+                    }
                     if let Some((_, _, width, height)) = window.geometry {
                         window.river_window.set_tiled(if window.floating {
                             Edges::empty()
@@ -881,6 +890,11 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     .chain(state.windows.iter().filter(|w| w.floating))
                 {
                     if let Some(node) = &window.node {
+                        if window.fullscreen_output.is_some() {
+                            window.river_window.show();
+                            node.place_top();
+                            continue;
+                        }
                         if let Some((x, y, _, _)) = window.geometry {
                             let output = &state.outputs[window.output.unwrap()];
                             let Some(area) = output.work_area() else {
@@ -965,6 +979,18 @@ impl Dispatch<RiverWindowV1, ()> for State {
         use river::river_window_management::river_window_v1::Event;
         match event {
             Event::Closed => remove_window(state, window.id()),
+            Event::FullscreenRequested { .. } => {
+                cancel_drag(state);
+                if let Some(item) = state.windows.iter_mut().find(|w| w.river_window == *window) {
+                    // Keep global workspace ownership authoritative over output hints.
+                    item.fullscreen = true;
+                }
+            }
+            Event::ExitFullscreenRequested => {
+                if let Some(item) = state.windows.iter_mut().find(|w| w.river_window == *window) {
+                    item.fullscreen = false;
+                }
+            }
             Event::AppId { app_id } => {
                 println!("Window {} app_id: {:?}", window.id(), app_id);
                 if let Some(item) = state.windows.iter_mut().find(|w| w.river_window == *window) {

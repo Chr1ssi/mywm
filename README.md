@@ -512,3 +512,20 @@ Standardmäßig sucht mywm neben seinem Build-Quellverzeichnis nach
 Der ignorierte Symlink `quickshell` hält alte Pfade für bereits laufende WM-
 und Quickshell-Prozesse gültig. Nach einem vollständigen Sitzungsneustart mit
 dem neu gebauten WM kann er entfernt werden. Er gehört nicht zum Repository.
+
+## Vollbild
+
+Vollbild-Anfragen von Anwendungen (z. B. YouTube, Browser-F11 oder Spiele)
+werden auf dem Monitor ihres Workspaces umgesetzt, für Wayland und Xwayland.
+River übernimmt dabei die gesamte Monitorfläche ohne Gaps, Fokus-Ränder oder
+Topbar. Die normale Kachelung und Floating-Geometrie bleiben gespeichert.
+Beim Verlassen von Vollbild werden sie wiederhergestellt. Ein Workspace- oder
+Fensterfokuswechsel setzt die Vollbilddarstellung vorübergehend aus; bei der
+Rückkehr wird sie wieder aktiv, sofern die Anwendung Vollbild nicht beendet hat.
+Monitorwünsche von Anwendungen überschreiben die Workspace-Zuordnung nicht.
+
+`python3 tests/fullscreen_protocol.py` prüft die Zustandswechsel und Hotplug.
+`python3 tests/fullscreen_smoke.py` prüft mit einem GTK-Testfenster Wayland und
+Xwayland, die tatsächlichen Bildpunkte über der Bar-Fläche und die Rückkehr
+zur normalen Größe. Dafür werden zusätzlich ein C-Compiler, pkg-config und
+GTK-3-Entwicklungsdateien sowie das Nachbar-Repository mywm-shell benötigt.
