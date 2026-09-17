@@ -282,12 +282,12 @@ Danach im Projekt bauen und River aus einer TTY starten:
 
 ```sh
 cargo build
-river -no-xwayland -c /home/chris/Projects/mywm/scripts/river-init
+river -c /home/chris/Projects/mywm/scripts/river-init
 ```
 
-Xwayland ist für den Alltagstest deaktiviert, auch im mywm-Sitzungseintrag.
-Zum erneuten Aktivieren `-no-xwayland` aus dessen `Exec`-Zeile entfernen und
-die Sitzung neu starten.
+Xwayland ist aktiviert, damit unter anderem Steam verwendet werden kann.
+Native Wayland-Anwendungen laufen weiterhin direkt unter Wayland. Für einen
+Test ohne Xwayland kann River mit `-no-xwayland` gestartet werden.
 
 Das Startskript startet Kanshi, mywm, swayidle, Quickshell-Bar und Wallpaper gemeinsam.
 Endet Kanshi, mywm oder swayidle, werden die übrigen Prozesse beendet. Ein Fehler der Bar beendet
