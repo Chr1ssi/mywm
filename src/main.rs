@@ -1,8 +1,16 @@
+mod appearance;
 mod config;
 mod floating;
+mod ipc;
+mod keyboard;
+mod layer_shell;
+mod monitor_workspaces;
 mod river;
 mod rules;
 mod scrolling;
+mod session;
+mod shell;
+mod wallpaper;
 mod workspaces;
 
 use river::river_window_management::{
@@ -12,6 +20,11 @@ use river::river_window_management::{
 
 use config::Config;
 use floating::{DragKind, Rect};
+use layer_shell::LayerFocus;
+use river::river_layer_shell::{
+    river_layer_shell_output_v1::RiverLayerShellOutputV1,
+    river_layer_shell_seat_v1::RiverLayerShellSeatV1, river_layer_shell_v1::RiverLayerShellV1,
+};
 use river::river_window_management::{
     river_pointer_binding_v1::RiverPointerBindingV1, river_window_v1::Edges,
 };
@@ -30,18 +43,29 @@ struct Window {
     output: Option<usize>,
     floating: bool,
     floating_rect: Option<Rect>,
+    border_width: i32,
     app_id: Option<String>,
     parent: Option<ObjectId>,
 }
 
 struct Output {
+    wl_global: Option<u32>,
     river_output: RiverOutputV1,
     position: Option<(i32, i32)>,
     dimensions: Option<(i32, i32)>,
     workspaces: Workspaces<ObjectId>,
+    layer_output: Option<RiverLayerShellOutputV1>,
+    non_exclusive_area: Option<Rect>,
 }
 
 struct State {
+    wl_outputs: std::collections::HashMap<
+        u32,
+        (
+            wayland_client::protocol::wl_output::WlOutput,
+            Option<String>,
+        ),
+    >,
     windows: Vec<Window>,
     outputs: Vec<Output>,
     focused_output: Option<usize>,
@@ -55,19 +79,31 @@ struct State {
     seat: Option<RiverSeatV1>,
     focused_window: Option<ObjectId>,
     focus_dirty: bool,
+    session_locked: bool,
+    locker: Option<std::process::Child>,
+    manager: Option<RiverWindowManagerV1>,
     config: Config,
+    keyboard: keyboard::KeyboardState,
     detached_workspaces: Option<Workspaces<ObjectId>>,
 
     bindings: Vec<RiverXkbBindingV1>,
     actions: Vec<Action>,
     exit_requested: bool,
     xkb_bindings: Option<RiverXkbBindingsV1>,
+    layer_shell: Option<RiverLayerShellV1>,
+    layer_seat: Option<RiverLayerShellSeatV1>,
+    layer_focus: LayerFocus,
+    layer_focus_granted: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
 enum Action {
+    Wallpaper,
+    Lock,
     Terminal,
+    Launcher,
     Exit,
+    WorkspaceOnOutput(u32, usize),
     Focus(isize),
     Move(isize),
     Close,
@@ -103,7 +139,7 @@ fn update_drag(state: &mut State) {
             && let Some(output) = window.output.and_then(|i| state.outputs.get(i))
             && output.workspaces.current().windows.contains(&drag.window)
             && window.floating
-            && let Some((width, height)) = output.dimensions
+            && let Some(Rect { width, height, .. }) = output.work_area()
         {
             if let Some((dx, dy)) = state.drag_delta.take() {
                 window.floating_rect = Some(drag.initial.dragged(drag.kind, dx, dy, width, height));
@@ -132,7 +168,11 @@ fn update_drag(state: &mut State) {
     let Some((id, action)) = state.pending_drag.take() else {
         return;
     };
-    if state.drag.is_some() || state.seat.is_none() {
+    if state.drag.is_some()
+        || state.seat.is_none()
+        || state.layer_focus == LayerFocus::Exclusive
+        || state.layer_focus_granted
+    {
         return;
     }
     let Some(index) = state
@@ -149,7 +189,13 @@ fn update_drag(state: &mut State) {
     if !output.workspaces.current().windows.contains(&id) {
         return;
     }
-    let (Some((ox, oy)), Some((width, height))) = (output.position, output.dimensions) else {
+    let Some(Rect {
+        x: ox,
+        y: oy,
+        width,
+        height,
+    }) = output.work_area()
+    else {
         return;
     };
     let initial = state.windows[index]
@@ -234,6 +280,7 @@ fn assign_windows(state: &mut State, default_output: usize) {
                 state.outputs[default_output].workspaces.active,
             ));
             let workspace = placement.workspace.unwrap_or(workspace);
+            let output = monitor_workspaces::owner(state, workspace).unwrap_or(output);
             let id = window.river_window.id();
             state.windows[index].output = Some(output);
             state.windows[index].floating = placement.floating;
@@ -274,7 +321,13 @@ fn layout(state: &mut State) {
         window.geometry = None;
     }
     for output in &mut state.outputs {
-        let (Some((x, y)), Some((width, height))) = (output.position, output.dimensions) else {
+        let Some(Rect {
+            x,
+            y,
+            width,
+            height,
+        }) = output.work_area()
+        else {
             continue;
         };
         let workspace = output.workspaces.current_mut();
@@ -304,7 +357,23 @@ fn layout(state: &mut State) {
                 .find(|w| Some(w.river_window.id()) == scroll_focus)
                 .and_then(|w| w.parent.clone());
         }
-        let (scroll, columns) = scrolling::columns(width, tiled.len(), focused, workspace.scroll);
+        let viewport = state.config.appearance.viewport(Rect {
+            x,
+            y,
+            width,
+            height,
+        });
+        let (scroll, columns) = if state.config.appearance.gaps_inner == 0 {
+            scrolling::columns(viewport.width, tiled.len(), focused, workspace.scroll)
+        } else {
+            scrolling::columns_with_gap(
+                viewport.width,
+                tiled.len(),
+                focused,
+                workspace.scroll,
+                state.config.appearance.gaps_inner,
+            )
+        };
         workspace.scroll = scroll;
         for (id, (left, column_width)) in tiled.into_iter().zip(columns) {
             if let Some(window) = state
@@ -312,7 +381,14 @@ fn layout(state: &mut State) {
                 .iter_mut()
                 .find(|w| w.river_window.id() == *id)
             {
-                window.geometry = Some((x + left, y, column_width, height));
+                let (content, border) = state.config.appearance.content(Rect {
+                    x: viewport.x + left,
+                    y: viewport.y,
+                    width: column_width,
+                    height: viewport.height,
+                });
+                window.geometry = Some((content.x, content.y, content.width, content.height));
+                window.border_width = border;
             }
         }
         for window in state
@@ -325,14 +401,41 @@ fn layout(state: &mut State) {
                 .unwrap_or_else(|| Rect::centered(width, height))
                 .constrained(width, height);
             window.floating_rect = Some(rect);
-            window.geometry = Some((x + rect.x, y + rect.y, rect.width, rect.height));
+            let (content, border) = state.config.appearance.content(Rect {
+                x: x + rect.x,
+                y: y + rect.y,
+                width: rect.width,
+                height: rect.height,
+            });
+            window.geometry = Some((content.x, content.y, content.width, content.height));
+            window.border_width = border;
         }
     }
 }
 
 fn run_actions(state: &mut State, manager: &RiverWindowManagerV1) {
     for action in std::mem::take(&mut state.actions) {
+        if state.session_locked && !matches!(action, Action::Lock) {
+            continue;
+        }
         match action {
+            Action::Wallpaper => {
+                let (x, y) = state
+                    .pointer_position
+                    .or_else(|| state.focused_output.and_then(|i| state.outputs[i].position))
+                    .unwrap_or((0, 0));
+                match wallpaper::picker(x, y).spawn() {
+                    Ok(mut child) => {
+                        std::thread::spawn(move || {
+                            let _ = child.wait();
+                        });
+                    }
+                    Err(error) => eprintln!("Cannot open wallpaper picker: {error}"),
+                }
+            }
+            Action::Lock => {
+                session::start_lock(&state.config, &mut state.locker, state.session_locked)
+            }
             Action::Exit => {
                 if manager.version() >= 4 {
                     state.exit_requested = true;
@@ -356,11 +459,56 @@ fn run_actions(state: &mut State, manager: &RiverWindowManagerV1) {
                     Err(error) => eprintln!("Cannot start terminal: {error}"),
                 }
             }
+            Action::Launcher => {
+                let mut command = std::process::Command::new(&state.config.launcher[0]);
+                command.args(&state.config.launcher[1..]);
+                state.config.apply_theme(&mut command);
+                command.env(
+                    "MYWM_TERMINAL_COUNT",
+                    state.config.terminal.len().to_string(),
+                );
+                for (index, argument) in state.config.terminal.iter().enumerate() {
+                    command.env(format!("MYWM_TERMINAL_{index}"), argument);
+                }
+                if let Some((x, y)) = state.pointer_position.or_else(|| {
+                    state
+                        .focused_output
+                        .and_then(|i| state.outputs[i].work_area())
+                        .map(|r| (r.x + r.width / 2, r.y + r.height / 2))
+                }) {
+                    command
+                        .env("MYWM_LAUNCHER_X", x.to_string())
+                        .env("MYWM_LAUNCHER_Y", y.to_string());
+                }
+                match command.spawn() {
+                    Ok(mut child) => {
+                        std::thread::spawn(move || {
+                            let _ = child.wait();
+                        });
+                    }
+                    Err(error) => eprintln!("Cannot start launcher: {error}"),
+                }
+            }
+            Action::WorkspaceOnOutput(id, target) => {
+                if let Some(output) = state
+                    .outputs
+                    .iter()
+                    .position(|o| o.river_output.id().protocol_id() == id)
+                {
+                    if monitor_workspaces::owner(state, target).is_some_and(|owner| owner != output)
+                    {
+                        continue;
+                    }
+                    cancel_drag(state);
+                    monitor_workspaces::select(state, output, target);
+                }
+            }
             Action::Workspace(target) => {
                 cancel_drag(state);
-                if let Some(output) = output_at_pointer(state).or(state.focused_output) {
-                    state.outputs[output].workspaces.select(target);
-                    focus_output(state, output);
+                if let Some(output) = monitor_workspaces::owner(state, target)
+                    .or_else(|| output_at_pointer(state).or(state.focused_output))
+                {
+                    monitor_workspaces::select(state, output, target);
                 }
             }
             Action::ToggleFloating => {
@@ -412,8 +560,7 @@ fn run_actions(state: &mut State, manager: &RiverWindowManagerV1) {
                     }
                     Action::MoveToWorkspace(target) => {
                         cancel_drag(state);
-                        state.outputs[output].workspaces.move_focused_to(target);
-                        focus_output(state, output);
+                        monitor_workspaces::move_window(state, output, target);
                     }
                     _ => unreachable!(),
                 }
@@ -542,16 +689,38 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
         _conn: &Connection,
         qh: &QueueHandle<Self>,
     ) {
+        if let wl_registry::Event::GlobalRemove { name } = &event
+            && let Some((output, _)) = state.wl_outputs.remove(name)
+            && output.version() >= 3
+        {
+            output.release();
+        }
         if let wl_registry::Event::Global {
             name,
             interface,
             version,
         } = event
         {
+            keyboard::bind(state, registry, name, &interface, version, qh);
+            if interface == "wl_output" {
+                let output = registry.bind::<wayland_client::protocol::wl_output::WlOutput, _, _>(
+                    name,
+                    version.min(4),
+                    qh,
+                    name,
+                );
+                state.wl_outputs.insert(name, (output, None));
+            }
             if interface == "river_window_manager_v1" {
                 println!("Binding river_window_manager_v1 v{version}");
 
-                registry.bind::<RiverWindowManagerV1, _, _>(name, version.min(5), qh, ());
+                state.manager =
+                    Some(registry.bind::<RiverWindowManagerV1, _, _>(name, version.min(5), qh, ()));
+            }
+
+            if interface == "river_layer_shell_v1" {
+                state.layer_shell = Some(registry.bind::<RiverLayerShellV1, _, _>(name, 1, qh, ()));
+                layer_shell::setup(state, qh);
             }
 
             if interface == "river_xkb_bindings_v1" {
@@ -584,6 +753,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     output: None,
                     floating: false,
                     floating_rect: None,
+                    border_width: 0,
                     app_id: None,
                     parent: None,
                 });
@@ -591,12 +761,16 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
 
             river::river_window_management::river_window_manager_v1::Event::Output { id } => {
                 state.outputs.push(Output {
+                    wl_global: None,
                     river_output: id,
                     position: None,
                     dimensions: None,
                     workspaces: Workspaces::new(state.config.workspaces),
+                    layer_output: None,
+                    non_exclusive_area: None,
                 });
 
+                layer_shell::setup(state, qh);
                 if let Some(workspaces) = state.detached_workspaces.take() {
                     let output_index = state.outputs.len() - 1;
                     for window in &mut state.windows {
@@ -615,12 +789,25 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                 }
             }
 
+            river::river_window_management::river_window_manager_v1::Event::SessionLocked => {
+                state.session_locked = true;
+                cancel_drag(state);
+            }
+            river::river_window_management::river_window_manager_v1::Event::SessionUnlocked => {
+                state.session_locked = false;
+                state.focus_dirty = true;
+            }
             river::river_window_management::river_window_manager_v1::Event::ManageStart => {
+                monitor_workspaces::reconcile(state);
                 let current_output = output_at_pointer(state)
                     .or(state.focused_output)
                     .or_else(|| (!state.outputs.is_empty()).then_some(0));
 
+                layer_shell::setup(state, qh);
                 if let Some(output) = current_output {
+                    if let Some(layer_output) = &state.outputs[output].layer_output {
+                        layer_output.set_default();
+                    }
                     assign_windows(state, output);
                 }
                 run_actions(state, manager);
@@ -631,6 +818,8 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                 update_drag(state);
                 layout(state);
                 for window in &mut state.windows {
+                    // The WM supplies focus borders, but no title bar.
+                    window.river_window.use_ssd();
                     if window.node.is_none() {
                         let node = window.river_window.get_node(qh, ());
                         window.node = Some(node);
@@ -646,14 +835,18 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     }
                 }
 
+                if state.layer_focus_granted {
+                    // Let the shell receive focus this sequence, including when an
+                    // application is announced at the same time as its launcher.
+                    state.focus_dirty = false;
+                }
                 if state.focus_dirty
+                    && state.layer_focus != LayerFocus::Exclusive
                     && let Some(seat) = &state.seat
                 {
-                    if let Some(window) = state
-                        .windows
-                        .iter()
-                        .find(|w| Some(w.river_window.id()) == state.focused_window)
-                    {
+                    if let Some(window) = state.windows.iter().find(|w| {
+                        Some(w.river_window.id()) == state.focused_window && w.geometry.is_some()
+                    }) {
                         seat.focus_window(&window.river_window);
                     } else {
                         seat.clear_focus();
@@ -662,6 +855,21 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                 }
 
                 install_bindings(state, qh);
+                for binding in &state.bindings {
+                    if state.session_locked {
+                        binding.disable();
+                    } else {
+                        binding.enable();
+                    }
+                }
+                for binding in &state.pointer_bindings {
+                    if state.session_locked {
+                        binding.disable();
+                    } else {
+                        binding.enable();
+                    }
+                }
+                state.layer_focus_granted = false;
                 manager.manage_finish();
             }
 
@@ -675,22 +883,48 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     if let Some(node) = &window.node {
                         if let Some((x, y, _, _)) = window.geometry {
                             let output = &state.outputs[window.output.unwrap()];
-                            let (ox, _) = output.position.unwrap();
-                            let (ow, oh) = output.dimensions.unwrap();
+                            let Some(area) = output.work_area() else {
+                                window.river_window.hide();
+                                continue;
+                            };
+                            let area = if window.floating {
+                                area
+                            } else {
+                                state.config.appearance.viewport(area)
+                            };
                             let (_, _, width, height) = window.geometry.unwrap();
-                            let left = x.max(ox);
-                            let right = (x + width).min(ox + ow);
-                            if right <= left {
+                            let border = window.border_width;
+                            let left = (x - border).max(area.x);
+                            let right = (x + width + border).min(area.x + area.width);
+                            let top = (y - border).max(area.y);
+                            let bottom = (y + height + border).min(area.y + area.height);
+                            if right <= left || bottom <= top {
                                 window.river_window.hide();
                                 continue;
                             }
+                            let active = state.layer_focus == LayerFocus::None
+                                && state.focused_window.as_ref() == Some(&window.river_window.id());
+                            let color = if active {
+                                state.config.appearance.active_border
+                            } else {
+                                state.config.appearance.inactive_border
+                            };
+                            let [r, g, b, a] = color.0;
+                            window.river_window.set_borders(
+                                Edges::Top | Edges::Bottom | Edges::Left | Edges::Right,
+                                border,
+                                r,
+                                g,
+                                b,
+                                a,
+                            );
                             window.river_window.show();
                             if window.river_window.version() >= 2 {
                                 window.river_window.set_clip_box(
                                     left - x,
-                                    0,
+                                    top - y,
                                     right - left,
-                                    height.min(oh),
+                                    bottom - top,
                                 );
                             }
                             node.set_position(x, y);
@@ -792,6 +1026,9 @@ impl Dispatch<RiverOutputV1, ()> for State {
             if let Some(index) = state.outputs.iter().position(|o| o.river_output == *output) {
                 cancel_drag(state);
                 let removed = state.outputs.remove(index);
+                if let Some(layer_output) = removed.layer_output {
+                    layer_output.destroy();
+                }
                 let fallback = (!state.outputs.is_empty()).then_some(0);
                 let focus_was_removed = state.windows.iter().any(|w| {
                     w.output == Some(index) && Some(w.river_window.id()) == state.focused_window
@@ -835,6 +1072,9 @@ impl Dispatch<RiverOutputV1, ()> for State {
         };
 
         match event {
+            river::river_window_management::river_output_v1::Event::WlOutput { name } => {
+                state_output.wl_global = Some(name);
+            }
             river::river_window_management::river_output_v1::Event::Position { x, y } => {
                 state_output.position = Some((x, y));
 
@@ -862,7 +1102,7 @@ impl Dispatch<RiverSeatV1, ()> for State {
         event: river::river_window_management::river_seat_v1::Event,
         _data: &(),
         _conn: &Connection,
-        _qh: &QueueHandle<Self>,
+        qh: &QueueHandle<Self>,
     ) {
         if matches!(
             event,
@@ -876,6 +1116,11 @@ impl Dispatch<RiverSeatV1, ()> for State {
                     binding.destroy();
                 }
                 cancel_drag(state);
+                if let Some(layer_seat) = state.layer_seat.take() {
+                    layer_seat.destroy();
+                }
+                state.layer_focus = LayerFocus::None;
+                state.layer_focus_granted = false;
                 state.seat = None;
                 state.pointer_position = None;
                 state.pointer_window = None;
@@ -887,6 +1132,7 @@ impl Dispatch<RiverSeatV1, ()> for State {
             return;
         }
         state.seat = Some(seat.clone());
+        layer_shell::setup(state, qh);
 
         match event {
             river::river_window_management::river_seat_v1::Event::PointerEnter { window } => {
@@ -996,9 +1242,28 @@ impl Dispatch<RiverXkbBindingsSeatV1, ()> for State {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("mywm starting");
+    eprintln!("mywm starting");
     let config = Config::load()?;
 
+    match std::env::args().nth(1).as_deref() {
+        Some("--wallpaper-list") => return wallpaper::list(&config),
+        Some("--wallpaper") => return wallpaper::run(&config),
+        Some("--lock") => return session::lock_and_wait(),
+        Some("--idle") => return session::idle(&config.idle),
+        _ => {}
+    }
+    if std::env::args().nth(1).as_deref() == Some("--bar") {
+        use std::os::unix::process::CommandExt;
+        let mut command = std::process::Command::new("qs");
+        command
+            .arg("--path")
+            .arg(shell::qml("bar.qml"))
+            .arg("--no-duplicate");
+        config.apply_theme(&mut command);
+        return Err(command.exec().into());
+    }
+    let mut ipc = ipc::Server::new()?;
+    let keyboard = keyboard::KeyboardState::new(&config.keyboard)?;
     let conn = Connection::connect_to_env()?;
     println!("connected to Wayland");
 
@@ -1009,6 +1274,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     display.get_registry(&qh, ());
 
     let mut state = State {
+        wl_outputs: Default::default(),
+        keyboard,
+        manager: None,
+        session_locked: false,
+        locker: None,
         windows: Vec::new(),
         outputs: Vec::new(),
         focused_output: None,
@@ -1028,6 +1298,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         actions: Vec::new(),
         exit_requested: false,
         xkb_bindings: None,
+        layer_shell: None,
+        layer_seat: None,
+        layer_focus: LayerFocus::None,
+        layer_focus_granted: false,
     };
 
     event_queue.roundtrip(&mut state)?;
@@ -1035,12 +1309,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Entering event loop");
 
     loop {
-        if let Err(error) = event_queue.blocking_dispatch(&mut state) {
-            // River disconnects clients when it handles exit_session.
+        let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+            use std::os::fd::AsRawFd;
+            event_queue.dispatch_pending(&mut state)?;
+            if let Some(ipc) = &mut ipc {
+                ipc.update(&mut state);
+            }
+            conn.flush()?;
+            if let Some(guard) = event_queue.prepare_read() {
+                let mut fd = libc::pollfd {
+                    fd: guard.connection_fd().as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+                // A bounded wait also services the nonblocking bar clients while River is idle.
+                let ready = unsafe { libc::poll(&mut fd, 1, if ipc.is_some() { 100 } else { -1 }) };
+                if ready < 0 {
+                    let error = std::io::Error::last_os_error();
+                    if error.kind() != std::io::ErrorKind::Interrupted {
+                        return Err(error.into());
+                    }
+                } else if ready > 0 {
+                    guard.read()?;
+                }
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
             if state.exit_requested {
                 return Ok(());
             }
-            return Err(error.into());
+            return Err(error);
         }
     }
 }

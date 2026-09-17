@@ -27,6 +27,16 @@ if [[ ! -r $monitor_config ]]; then
     exit 1
 fi
 
+for dependency in swaylock swayidle wlopm; do
+    if ! command -v "$dependency" >/dev/null 2>&1; then
+        echo "Fehlende Sitzungskomponente: $dependency. Installieren: sudo pacman -S swaylock swayidle wlopm" >&2
+        exit 1
+    fi
+done
+
+# A private directory isolates IPC from other River sessions and stale sockets.
+ipc_dir=$(mktemp -d "${XDG_RUNTIME_DIR:?}/mywm-session.XXXXXX")
+export MYWM_SOCKET="$ipc_dir/control.sock"
 children=()
 cleanup() {
     trap - EXIT INT TERM
@@ -34,6 +44,8 @@ cleanup() {
         kill "${children[@]}" 2>/dev/null || true
         wait "${children[@]}" 2>/dev/null || true
     fi
+    rm -f -- "$MYWM_SOCKET"
+    rmdir -- "$ipc_dir"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -44,9 +56,17 @@ children+=("$!")
 "$wm_binary" &
 children+=("$!")
 
+"$wm_binary" --idle &
+children+=("$!")
+session_children=("${children[@]}")
+"$wm_binary" --wallpaper &
+children+=("$!")
+"$wm_binary" --bar &
+children+=("$!")
+
 # Beide Prozesse gehören zu dieser River-Sitzung. Beim Ende eines Prozesses
 # wird auch der andere beendet, damit kein alter Kanshi-Prozess zurückbleibt.
 status=0
-wait -n "${children[@]}" || status=$?
-echo "Ein Sitzungsprozess wurde beendet (Status $status); mywm/Kanshi werden gestoppt." >&2
+wait -n "${session_children[@]}" || status=$?
+echo "Ein Sitzungsprozess wurde beendet (Status $status); mywm/Kanshi/Idle werden gestoppt." >&2
 exit "$status"

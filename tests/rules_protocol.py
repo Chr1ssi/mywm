@@ -10,6 +10,10 @@ def main():
         config = Path(directory) / "config.toml"
         config.write_text('''
 workspaces = 3
+[appearance]
+gaps_inner = 0
+gaps_outer = 0
+border_width = 0
 [[rules]]
 app_id = "test.background"
 workspace = 2

@@ -15,22 +15,28 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RiverPeer:
-    def __init__(self, config=None):
+    def __init__(self, config=None, layer_shell=False, output_names=None):
+        self.output_names = output_names or {}
         self.interfaces = {}
         for path in ["/usr/share/wayland/wayland.xml",
                      "/usr/share/river-protocols/stable/river-window-management-v1.xml",
-                     "/usr/share/river-protocols/stable/river-xkb-bindings-v1.xml"]:
+                     "/usr/share/river-protocols/stable/river-xkb-bindings-v1.xml",
+                     "/usr/share/river-protocols/stable/river-layer-shell-v1.xml"]:
             for interface in ET.parse(path).getroot().findall("interface"):
                 self.interfaces[interface.attrib["name"]] = interface
         self.objects = {1: "wl_display"}
         self.bindings = {}
         self.pointer_bindings = {}
         self.nodes = {}
+        self.layer_shell = layer_shell
+        self.layer_outputs = {}
+        self.layer_seats = {}
         self.server_id = 0xfeffffff
         self.socket, client = socket.socketpair()
         self.socket.settimeout(5)
         env = dict(os.environ, WAYLAND_SOCKET=str(client.fileno()),
-                   MYWM_CONFIG=str(config or ROOT / "config/mywm.toml"))
+                   MYWM_CONFIG=str(config or ROOT / "tests/fixtures/plain.toml"))
+        env.pop("MYWM_SOCKET", None)
         self.process = subprocess.Popen([str(ROOT / "target/debug/mywm")], env=env,
                                         pass_fds=(client.fileno(),), stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT, text=True)
@@ -105,6 +111,13 @@ class RiverPeer:
             registry = arguments["registry"]
             self.event(registry, "global", 1, "river_window_manager_v1", 5)
             self.event(registry, "global", 2, "river_xkb_bindings_v1", 3)
+            for global_name in self.output_names:
+                self.event(registry, "global", global_name, "wl_output", 4)
+            if self.layer_shell:
+                self.event(registry, "global", 3, "river_layer_shell_v1", 1)
+        elif interface == "wl_registry" and name == "bind" and self.objects[arguments["id"]] == "wl_output":
+            self.event(arguments["id"], "name", self.output_names[arguments["name"]])
+            self.event(arguments["id"], "done")
         elif interface == "wl_display" and name == "sync":
             callback = arguments["callback"]
             self.event(callback, "done", 1)
@@ -113,6 +126,12 @@ class RiverPeer:
             self.bindings[(arguments["keysym"], arguments["modifiers"])] = arguments["id"]
         elif name == "get_pointer_binding":
             self.pointer_bindings[(arguments["button"], arguments["modifiers"])] = arguments["id"]
+        elif interface == "river_layer_shell_v1" and name == "get_output":
+            assert arguments["output"] not in self.layer_outputs, "duplicate layer output"
+            self.layer_outputs[arguments["output"]] = arguments["id"]
+        elif interface == "river_layer_shell_v1" and name == "get_seat":
+            assert arguments["seat"] not in self.layer_seats, "duplicate layer seat"
+            self.layer_seats[arguments["seat"]] = arguments["id"]
         elif name == "get_node":
             self.nodes[object_id] = arguments["id"]
         return object_id, name, arguments

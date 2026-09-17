@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=mywm (River)
+Comment=River mit mywm und eigener Quickshell-Oberfläche
+Exec=/usr/bin/env XDG_CURRENT_DESKTOP=river XDG_SESSION_DESKTOP=mywm XDG_SESSION_TYPE=wayland /usr/bin/river -no-xwayland -c /home/chris/Projects/mywm/scripts/river-init
+TryExec=/usr/bin/river
+Type=Application
+Keywords=tiling;wayland;compositor;

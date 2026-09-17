@@ -7,9 +7,15 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    pub workspace_outputs: std::collections::BTreeMap<String, Vec<usize>>,
+    pub wallpaper_directory: String,
+    pub idle: crate::session::IdleConfig,
+    pub keyboard: crate::keyboard::KeyboardConfig,
     pub workspaces: usize,
     pub terminal: Vec<String>,
+    pub launcher: Vec<String>,
     pub bindings: Bindings,
+    pub appearance: crate::appearance::Appearance,
     pub float_dialogs: bool,
     pub rules: Vec<crate::rules::Rule>,
 }
@@ -17,9 +23,24 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            workspace_outputs: Default::default(),
+            wallpaper_directory: std::env::var("HOME")
+                .map(|home| format!("{home}/Bilder/Wallpaper"))
+                .unwrap_or_else(|_| "/usr/share/backgrounds".into()),
+            idle: crate::session::IdleConfig::default(),
+            keyboard: crate::keyboard::KeyboardConfig::default(),
             workspaces: 9,
             terminal: vec!["kitty".into()],
+            launcher: vec![
+                "qs".into(),
+                "--path".into(),
+                crate::shell::qml("shell.qml")
+                    .to_string_lossy()
+                    .into_owned(),
+                "--no-duplicate".into(),
+            ],
             bindings: Bindings::default(),
+            appearance: crate::appearance::Appearance::default(),
             float_dialogs: true,
             rules: Vec::new(),
         }
@@ -29,7 +50,10 @@ impl Default for Config {
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Bindings {
+    wallpaper: Vec<String>,
+    lock: Vec<String>,
     terminal: Vec<String>,
+    launcher: Vec<String>,
     close: Vec<String>,
     exit: Vec<String>,
     focus_left: Vec<String>,
@@ -46,9 +70,12 @@ impl Default for Bindings {
     fn default() -> Self {
         let keys = |values: &[&str]| values.iter().map(|v| (*v).into()).collect();
         Self {
+            wallpaper: keys(&["Super+Shift+w"]),
+            lock: keys(&["Super+Escape"]),
             toggle_floating: keys(&["Super+v"]),
             pointer_modifiers: "Super".into(),
             terminal: keys(&["Super+Return"]),
+            launcher: keys(&["Super+Space"]),
             close: keys(&["Super+q"]),
             exit: keys(&["Super+m"]),
             focus_left: keys(&["Super+h", "Super+Left"]),
@@ -62,8 +89,43 @@ impl Default for Bindings {
 }
 
 impl Config {
+    pub fn apply_theme(&self, command: &mut std::process::Command) {
+        let a = &self.appearance;
+        for (name, color) in [
+            ("BACKGROUND", a.background),
+            ("SURFACE", a.surface),
+            ("TEXT", a.text),
+            ("MUTED", a.muted_text),
+            ("ACCENT", a.active_border),
+            ("BORDER", a.inactive_border),
+        ] {
+            command.env(format!("MYWM_COLOR_{name}"), color.css());
+        }
+    }
+
     pub fn parse(text: &str) -> Result<Self> {
         let config: Self = toml::from_str(text)?;
+        if !config.workspace_outputs.is_empty() {
+            let mut seen = HashSet::new();
+            for (output, numbers) in &config.workspace_outputs {
+                if output.trim().is_empty() || numbers.is_empty() {
+                    return Err(
+                        "workspace_outputs requires nonempty monitor names and workspace lists"
+                            .into(),
+                    );
+                }
+                for number in numbers {
+                    if !(1..=config.workspaces).contains(number) || !seen.insert(*number) {
+                        return Err(
+                            "workspace_outputs must assign each workspace exactly once".into()
+                        );
+                    }
+                }
+            }
+            if seen.len() != config.workspaces {
+                return Err("workspace_outputs must assign every workspace".into());
+            }
+        }
         if !(1..=9).contains(&config.workspaces) {
             return Err("workspaces must be between 1 and 9".into());
         }
@@ -74,10 +136,22 @@ impl Config {
         {
             return Err("terminal must contain a program, e.g. [\"kitty\"]".into());
         }
+        if config
+            .launcher
+            .first()
+            .is_none_or(|program| program.trim().is_empty())
+        {
+            return Err("launcher must contain a program".into());
+        }
         for (index, rule) in config.rules.iter().enumerate() {
             rule.validate(config.workspaces)
                 .map_err(|error| format!("rules[{}]: {error}", index + 1))?;
         }
+        if !std::path::Path::new(&config.wallpaper_directory).is_absolute() {
+            return Err("wallpaper_directory must be an absolute path".into());
+        }
+        config.idle.validate()?;
+        config.appearance.validate()?;
         config.keybindings()?;
         config.pointer_modifiers()?;
         Ok(config)
@@ -98,7 +172,7 @@ impl Config {
         match std::fs::read_to_string(&path) {
             Ok(text) => {
                 let config = Self::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-                println!("Configuration: {}", path.display());
+                eprintln!("Configuration: {}", path.display());
                 Ok(config)
             }
             Err(e) if explicit.is_none() && e.kind() == std::io::ErrorKind::NotFound => {
@@ -124,7 +198,10 @@ impl Config {
             Ok(())
         };
         for (keys, action) in [
+            (&self.bindings.wallpaper, Action::Wallpaper),
+            (&self.bindings.lock, Action::Lock),
             (&self.bindings.terminal, Action::Terminal),
+            (&self.bindings.launcher, Action::Launcher),
             (&self.bindings.close, Action::Close),
             (&self.bindings.exit, Action::Exit),
             (&self.bindings.toggle_floating, Action::ToggleFloating),
@@ -194,13 +271,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn workspace_outputs_must_assign_every_global_number_once() {
+        Config::parse("workspaces = 3\n[workspace_outputs]\nDP-1 = [1]\nDP-3 = [2, 3]").unwrap();
+        for mapping in [
+            "DP-1 = [1, 2]",
+            "DP-1 = [1, 2]\nDP-3 = [2, 3]",
+            "DP-1 = [0, 1, 2]",
+            "DP-1 = [1, 2, 4]",
+            "DP-1 = []",
+        ] {
+            assert!(
+                Config::parse(&format!("workspaces = 3\n[workspace_outputs]\n{mapping}")).is_err()
+            );
+        }
+    }
+
+    #[test]
     fn defaults_and_partial_configuration() {
         let defaults = Config::parse("").unwrap();
         assert_eq!(defaults.workspaces, 9);
-        assert_eq!(defaults.keybindings().unwrap().len(), 30);
+        assert_eq!(defaults.keybindings().unwrap().len(), 33);
         let config =
             Config::parse("workspaces = 3\nterminal = ['kitty', '--single-instance']").unwrap();
-        assert_eq!(config.keybindings().unwrap().len(), 18);
+        assert_eq!(config.keybindings().unwrap().len(), 21);
         assert_eq!(config.terminal[1], "--single-instance");
         Config::parse(include_str!("../config/mywm.toml")).unwrap();
     }
@@ -211,6 +304,8 @@ mod tests {
             "workspaces = 0",
             "workspaces = 10",
             "terminal = []",
+            "launcher = []",
+            "launcher = ['']",
             "terminal = ['']",
             "workpace = 3",
             "[bindings]\nunknown = []",

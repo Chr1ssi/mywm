@@ -5,18 +5,30 @@ pub fn columns(
     focus: Option<usize>,
     scroll: i32,
 ) -> (i32, Vec<(i32, i32)>) {
+    columns_with_gap(width, count, focus, scroll, 0)
+}
+
+pub fn columns_with_gap(
+    width: i32,
+    count: usize,
+    focus: Option<usize>,
+    scroll: i32,
+    gap: i32,
+) -> (i32, Vec<(i32, i32)>) {
     if count == 0 || width <= 0 {
         return (0, Vec::new());
     }
+    let gap = gap.clamp(0, (width - 2).max(0));
     let column_width = if count == 1 {
         width
     } else {
-        (width / 2).max(1)
+        ((width - gap) / 2).max(1)
     };
-    let max_scroll = (column_width * count as i32 - width).max(0);
+    let stride = column_width + gap;
+    let max_scroll = (stride * count as i32 - gap - width).max(0);
     let mut scroll = scroll.clamp(0, max_scroll);
     if let Some(focus) = focus.filter(|i| *i < count) {
-        let left = focus as i32 * column_width;
+        let left = focus as i32 * stride;
         if left < scroll {
             scroll = left;
         } else if left + column_width > scroll + width {
@@ -26,7 +38,7 @@ pub fn columns(
     (
         scroll,
         (0..count)
-            .map(|i| (i as i32 * column_width - scroll, column_width))
+            .map(|i| (i as i32 * stride - scroll, column_width))
             .collect(),
     )
 }
@@ -72,6 +84,25 @@ mod tests {
         assert_eq!(positions[3], (640, 640));
         let (_, positions) = columns(1919, 3, Some(2), 0);
         assert_eq!(positions[2].0 + positions[2].1, 1919);
+    }
+
+    #[test]
+    fn gaps_separate_frames_without_wasting_the_single_window_area() {
+        assert_eq!(
+            columns_with_gap(1904, 1, Some(0), 0, 8),
+            (0, vec![(0, 1904)])
+        );
+        assert_eq!(
+            columns_with_gap(1904, 2, Some(1), 0, 8),
+            (0, vec![(0, 948), (956, 948)])
+        );
+        let (scroll, positions) = columns_with_gap(1904, 3, Some(2), 0, 8);
+        assert_eq!(scroll, 956);
+        assert_eq!(positions[2], (956, 948));
+        assert_eq!(
+            columns_with_gap(1, 2, Some(1), 0, 128),
+            (1, vec![(-1, 1), (0, 1)])
+        );
     }
 
     #[test]

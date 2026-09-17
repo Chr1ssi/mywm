@@ -1,12 +1,43 @@
-# Feste Workspaces pro Monitor (1 bis 9); Änderungen gelten nach Neustart.
+# Neun globale Workspaces; Monitorzuordnung unten. Änderungen gelten nach Neustart.
 workspaces = 9
 # Fenster mit Elternfenster (z. B. Dateidialoge) standardmäßig frei schwebend.
 float_dialogs = true
 # Programm und Argumente getrennt, ohne Shell-Auswertung.
 terminal = ["kitty"]
+wallpaper_directory = "/home/chris/Bilder/Wallpaper"
+
+[workspace_outputs]
+DP-3 = [1, 2, 3]
+HDMI-A-1 = [4, 5, 6]
+DP-1 = [7, 8, 9]
+
+# Sekunden; 0 deaktiviert den jeweiligen Inaktivitäts-Timer.
+[idle]
+lock_after_seconds = 300
+monitor_off_after_seconds = 600
+
+[keyboard]
+layout = "de"
+variant = ""
+options = ""
+
+[appearance]
+gaps_inner = 8
+gaps_outer = 8
+border_width = 2
+active_border = "#89b4fa"
+inactive_border = "#45475a"
+# Gemeinsame Palette für WM und Quickshell.
+background = "#1e1e2e"
+surface = "#313244"
+text = "#cdd6f4"
+muted_text = "#a6adc8"
 
 [bindings]
+wallpaper = ["Super+Shift+w"]
+lock = ["Super+Escape"]
 terminal = ["Super+Return"]
+launcher = ["Super+Space"]
 close = ["Super+q"]
 exit = ["Super+m"]
 toggle_floating = ["Super+v"]

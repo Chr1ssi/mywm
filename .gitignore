@@ -1,3 +1,6 @@
 /target
 
 /tests/__pycache__/
+
+# Compatibility link for binaries started before the repository split.
+/quickshell

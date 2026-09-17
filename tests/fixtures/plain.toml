@@ -1,0 +1,5 @@
+# Geometry regression tests exercise the original zero-decoration layout.
+[appearance]
+gaps_inner = 0
+gaps_outer = 0
+border_width = 0
