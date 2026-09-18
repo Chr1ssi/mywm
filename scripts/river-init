@@ -59,6 +59,10 @@ children+=("$!")
 "$wm_binary" --idle &
 children+=("$!")
 session_children=("${children[@]}")
+# D-Bus activated dialogs need the compositor's display, not the login environment.
+if ! "$project_dir/scripts/session-environment"; then
+    echo 'Warnung: Portal-Umgebung konnte nicht vollständig eingerichtet werden.' >&2
+fi
 "$wm_binary" --wallpaper &
 children+=("$!")
 "$wm_binary" --bar &

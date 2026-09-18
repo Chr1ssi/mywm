@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${WAYLAND_DISPLAY:?Muss innerhalb der River-Sitzung ausgeführt werden}"
+export XDG_CURRENT_DESKTOP=river
+export XDG_SESSION_DESKTOP=mywm
+export XDG_SESSION_TYPE=wayland
+# Explicitly clear a previous session's X display if Xwayland is disabled.
+export DISPLAY=${DISPLAY:-}
+dbus-update-activation-environment --systemd \
+    WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE
+portals=(xdg-desktop-portal-gtk.service xdg-desktop-portal.service)
+if [[ -f /usr/share/xdg-desktop-portal/portals/wlr.portal ]]; then
+    portals=(xdg-desktop-portal-wlr.service "${portals[@]}")
+fi
+# Newly installed units may not have been loaded yet.
+systemctl --user reset-failed "${portals[@]}" 2>/dev/null || true
+systemctl --user --no-block restart "${portals[@]}"

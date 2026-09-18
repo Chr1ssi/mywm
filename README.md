@@ -529,3 +529,31 @@ Monitorwünsche von Anwendungen überschreiben die Workspace-Zuordnung nicht.
 Xwayland, die tatsächlichen Bildpunkte über der Bar-Fläche und die Rückkehr
 zur normalen Größe. Dafür werden zusätzlich ein C-Compiler, pkg-config und
 GTK-3-Entwicklungsdateien sowie das Nachbar-Repository mywm-shell benötigt.
+
+## Dateiauswahl-Portale
+
+Ordner- und Dateidialoge verwenden `xdg-desktop-portal` mit dem GTK-Backend.
+`scripts/river-init` ruft nach dem WM-Start `scripts/session-environment` auf:
+Es übergibt die aktuellen Display- und Desktop-Variablen an D-Bus/systemd und
+startet die beiden Portal-Dienste mit dieser Umgebung neu. Ohne diese Übergabe
+kann das GTK-Portal mit `cannot open display` ausfallen.
+
+`config/river-portals.conf` kann unter
+`~/.config/xdg-desktop-portal/river-portals.conf` installiert werden; es wählt GTK
+für River, ohne die Hyprland-spezifische Konfiguration zu ändern. In einer
+laufenden mywm-Sitzung lässt sich `scripts/session-environment` zur Reparatur
+aufrufen. Dafür müssen `xdg-desktop-portal` und `xdg-desktop-portal-gtk` installiert
+sein. Für Bildschirmfreigabe und Screenshots wird zusätzlich
+`xdg-desktop-portal-wlr` benötigt. `config/river-portals.conf` ordnet ScreenCast
+und Screenshot dem wlr-Backend zu, FileChooser bleibt bei GTK. Das Startskript
+startet das installierte wlr-Backend ebenfalls mit der aktuellen Sitzungsumgebung.
+Nach einer Neuinstallation gegebenenfalls `systemctl --user daemon-reload`
+ausführen und anschließend `scripts/session-environment` starten.
+
+Vesktop nach einer Portal-Umstellung neu starten und die Bildschirmfreigabe
+öffnen. Die Quellenauswahl verwendet Zenity im Listenmodus. Dafür
+`config/river-screencast.conf` nach `~/.config/xdg-desktop-portal-wlr/river`
+installieren. Bei Anfragen nach Monitoren und Fenstern überspringt das wlr-Portal
+in seiner automatischen Auswahl Slurp; ohne einen Listen-Chooser scheitert die
+Freigabe dann mit `no output found`. Zenity zeigt die vom Portal angebotenen
+Quellen an und gibt nur die ausdrücklich ausgewählte Quelle zurück.

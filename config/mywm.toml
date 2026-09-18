@@ -22,8 +22,8 @@ variant = ""
 options = ""
 
 [appearance]
-gaps_inner = 8
-gaps_outer = 8
+gaps_inner = 4
+gaps_outer = 4
 border_width = 2
 active_border = "#89b4fa"
 inactive_border = "#45475a"
@@ -63,6 +63,6 @@ move_to_workspace_modifiers = "Super+Shift"
 # app_id = "org.gnome.Calculator"
 # floating = true
 #
-# [[rules]]
-# dialog = true
-# floating = true
+[[rules]]
+dialog = true
+floating = true
