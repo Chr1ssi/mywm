@@ -10,6 +10,19 @@ use std::{
 };
 use wayland_client::Proxy;
 
+fn overflow_directions(
+    area: crate::floating::Rect,
+    geometries: impl IntoIterator<Item = (i32, i32, i32, i32)>,
+) -> (bool, bool) {
+    let mut left = false;
+    let mut right = false;
+    for (x, _, width, _) in geometries {
+        left |= x < area.x;
+        right |= x + width > area.x + area.width;
+    }
+    (left, right)
+}
+
 struct Client {
     socket: UnixStream,
     input: Vec<u8>,
@@ -159,11 +172,15 @@ fn snapshot(state: &State) -> String {
                         .any(|window| window.river_window.id() == **id && !window.floating)
                 })
                 .collect();
-            let focused = tiled
-                .iter()
-                .position(|id| Some(*id) == o.workspaces.current().focused.as_ref());
-            let left = focused.is_some_and(|position| position > 0);
-            let right = focused.is_some_and(|position| position + 1 < tiled.len());
+            let area = o.work_area()?;
+            let geometries = tiled.iter().filter_map(|id| {
+                state
+                    .windows
+                    .iter()
+                    .find(|window| window.river_window.id() == **id)
+                    .and_then(|window| window.geometry)
+            });
+            let (left, right) = overflow_directions(area, geometries);
             Some(format!(
                 "{},{},{},{},{},{},{},{},{},{}",
                 o.river_output.id().protocol_id(),
@@ -185,4 +202,32 @@ fn snapshot(state: &State) -> String {
         outputs.join(";"),
         u8::from(state.session_locked)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::floating::Rect;
+
+    #[test]
+    fn markers_only_report_windows_outside_the_visible_area() {
+        let area = Rect {
+            x: 4,
+            y: 4,
+            width: 1912,
+            height: 1072,
+        };
+        assert_eq!(
+            overflow_directions(area, [(6, 6, 952, 1068), (962, 6, 952, 1068)]),
+            (false, false)
+        );
+        assert_eq!(
+            overflow_directions(area, [(-950, 6, 952, 1068), (6, 6, 952, 1068)]),
+            (true, false)
+        );
+        assert_eq!(
+            overflow_directions(area, [(962, 6, 952, 1068), (1918, 6, 952, 1068)]),
+            (false, true)
+        );
+    }
 }

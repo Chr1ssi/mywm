@@ -112,8 +112,7 @@ bisherige Position im Fensterstreifen erhalten.
 In `[bindings]` lässt sich `toggle_floating = ["Super+v"]` ändern.
 `pointer_modifiers = "Super"` legt die Modifier für beide Mausaktionen fest.
 Dialogfenster mit einem Elternfenster starten standardmäßig auf Floating; Rules können dies überschreiben.
-Auch eine erst später gemeldete Dialogbeziehung schaltet das Fenster noch auf Floating. Das ist
-insbesondere für Einstellungs- und Menüfenster von Steam/Wine-Anwendungen wichtig.
+Auch eine erst später gemeldete Dialogbeziehung schaltet das Fenster noch auf Floating.
 
 Gekachelte Fenster lassen sich mit `Super` und der rechten Maustaste horizontal skalieren. Die
 Spaltenbreite bleibt beim Scrollen, Umordnen und Workspace-Wechsel erhalten.
@@ -139,8 +138,10 @@ Die Projektkonfiguration ordnet 1–3 DP-3, 4–6 HDMI-A-1 und 7–9 DP-1 zu.
 Monitorwechsel folgt der Mauszeiger, damit neue Anwendungen dort erscheinen.
 Die Bar zeigt jeweils nur die zugeordneten Nummern. `Super+Ctrl+Links/Hoch` und
 `Super+Ctrl+Rechts/Runter` wechseln zyklisch zwischen den Workspaces des aktuellen Monitors.
-`Super+Shift+Hoch/Runter` verschiebt das fokussierte Fenster entsprechend. Am linken bzw. rechten
-Rand der Bar erscheint ein Pfeil, wenn dort weitere gekachelte Fenster vorhanden sind.
+`Super+Shift+Hoch/Runter` verschiebt das fokussierte Fenster entsprechend. Ein fünf Pixel breiter
+Marker über die gesamte linke bzw. rechte Bildschirmkante erscheint nur dann, wenn in dieser
+Richtung gekachelte Fenster außerhalb des sichtbaren Ausschnitts liegen. Der Marker reserviert
+diesen Rand, damit er nicht vom Fensterinhalt überdeckt wird.
 
 ## Gaming-Workspace
 

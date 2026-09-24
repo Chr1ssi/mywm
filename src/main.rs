@@ -1196,6 +1196,9 @@ impl Dispatch<RiverWindowV1, ()> for State {
                     monitor_workspaces::select(state, output, gaming);
                 }
             }
+            Event::Title { title } => {
+                println!("Window {} title: {:?}", window.id(), title);
+            }
             Event::Parent { parent } => {
                 if let Some(item) = state.windows.iter_mut().find(|w| w.river_window == *window) {
                     item.parent = parent.map(|p| p.id());
