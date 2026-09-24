@@ -304,6 +304,42 @@ und prüft die River-Anfragen für Sichtbarkeit, Fokus, Workspace-Wechsel,
 Verschieben, Monitorwechsel, Floating, Mausoperationen und Sitzungsende. Er steuert keine Desktop-Sitzung;
 Rendering und echte Tastatureingaben müssen weiterhin unter River geprüft werden.
 
+### Nix / NixOS
+
+Die Flake baut mywm zusammen mit der passenden Quickshell-Oberfläche:
+
+```sh
+nix build github:Chr1ssi/mywm
+```
+
+Für NixOS stellt sie zusätzlich ein Sitzungsmodul bereit. In einer Flake-basierten
+Systemkonfiguration genügt:
+
+```nix
+{
+  inputs.mywm = {
+    url = "github:Chr1ssi/mywm";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  outputs = inputs: {
+    nixosConfigurations.hostname = inputs.nixpkgs.lib.nixosSystem {
+      modules = [
+        inputs.mywm.nixosModules.default
+        { programs.mywm.enable = true; }
+      ];
+    };
+  };
+}
+```
+
+Das Modul installiert mywm und River, registriert die Wayland-Sitzung beim
+Display-Manager und richtet Xwayland, swaylock sowie die benötigten Portale ein.
+Es erwartet die persönliche Konfiguration unter
+`$XDG_CONFIG_HOME/mywm/config.toml` und Kanshi unter
+`$XDG_CONFIG_HOME/kanshi/config`. `programs.mywm.package` kann überschrieben
+werden; außerdem exportiert die Flake `overlays.default` und das Paket `mywm`.
+
 Das Binary `target/debug/mywm` muss innerhalb einer River-Sitzung mit passendem
 `WAYLAND_DISPLAY` laufen. Dort darf noch kein anderer Windowmanager verbunden
 sein. Die Desktop-Startkonfiguration wird von diesem Projekt nicht verändert.

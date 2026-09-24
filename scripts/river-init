@@ -4,6 +4,7 @@ set -euo pipefail
 project_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 wm_binary=${MYWM_BINARY:-"$project_dir/target/debug/mywm"}
 monitor_config=${MYWM_MONITOR_CONFIG:-"$project_dir/config/kanshi.conf"}
+session_environment=${MYWM_SESSION_ENVIRONMENT:-"$project_dir/scripts/session-environment"}
 # Eine persönliche Konfiguration hat Vorrang vor dem Projektbeispiel.
 user_config="${XDG_CONFIG_HOME:-$HOME/.config}/mywm/config.toml"
 if [[ ! -v MYWM_CONFIG && ! -f $user_config ]]; then
@@ -59,8 +60,12 @@ children+=("$!")
 "$wm_binary" --idle &
 children+=("$!")
 session_children=("${children[@]}")
+if [[ -n ${MYWM_POLKIT_AGENT:-} ]]; then
+    "$MYWM_POLKIT_AGENT" &
+    children+=("$!")
+fi
 # D-Bus activated dialogs need the compositor's display, not the login environment.
-if ! "$project_dir/scripts/session-environment"; then
+if ! "$session_environment"; then
     echo 'Warnung: Portal-Umgebung konnte nicht vollständig eingerichtet werden.' >&2
 fi
 "$wm_binary" --autostart
