@@ -102,6 +102,7 @@ struct State {
 
 #[derive(Clone, Copy, Debug)]
 enum Action {
+    Reload,
     Wallpaper,
     Lock,
     Terminal,
@@ -418,12 +419,13 @@ fn layout(state: &mut State) {
     }
 }
 
-fn run_actions(state: &mut State, manager: &RiverWindowManagerV1) {
+fn run_actions(state: &mut State, manager: &RiverWindowManagerV1, qh: &QueueHandle<State>) {
     for action in std::mem::take(&mut state.actions) {
         if state.session_locked && !matches!(action, Action::Lock) {
             continue;
         }
         match action {
+            Action::Reload => reload_config(state, qh),
             Action::Wallpaper => {
                 let (x, y) = state
                     .pointer_position
@@ -597,6 +599,27 @@ fn run_autostart(config: &Config) {
     for command in &config.autostart {
         spawn_command(command, "autostart command");
     }
+}
+
+fn reload_config(state: &mut State, qh: &QueueHandle<State>) {
+    let new = match Config::load() {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!("Configuration reload failed; keeping current configuration: {error}");
+            return;
+        }
+    };
+
+    for binding in state.bindings.drain(..) {
+        binding.destroy();
+    }
+    for binding in state.pointer_bindings.drain(..) {
+        binding.destroy();
+    }
+    state.config.apply_reloadable(new);
+    install_bindings(state, qh);
+    state.focus_dirty = true;
+    eprintln!("Configuration reloaded");
 }
 
 fn install_bindings(state: &mut State, qh: &QueueHandle<State>) {
@@ -847,7 +870,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     }
                     assign_windows(state, output);
                 }
-                run_actions(state, manager);
+                run_actions(state, manager, qh);
                 if state.exit_requested {
                     manager.manage_finish();
                     return;

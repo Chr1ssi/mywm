@@ -64,6 +64,7 @@ pub struct ProgramBinding {
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Bindings {
+    reload: Vec<String>,
     wallpaper: Vec<String>,
     lock: Vec<String>,
     terminal: Vec<String>,
@@ -84,6 +85,7 @@ impl Default for Bindings {
     fn default() -> Self {
         let keys = |values: &[&str]| values.iter().map(|v| (*v).into()).collect();
         Self {
+            reload: keys(&["Super+Shift+r"]),
             wallpaper: keys(&["Super+Shift+w"]),
             lock: keys(&["Super+Escape"]),
             toggle_floating: keys(&["Super+v"]),
@@ -227,6 +229,7 @@ impl Config {
             Ok(())
         };
         for (keys, action) in [
+            (&self.bindings.reload, Action::Reload),
             (&self.bindings.wallpaper, Action::Wallpaper),
             (&self.bindings.lock, Action::Lock),
             (&self.bindings.terminal, Action::Terminal),
@@ -263,6 +266,17 @@ impl Config {
             }
         }
         Ok(bindings)
+    }
+
+    pub fn apply_reloadable(&mut self, new: Self) {
+        self.wallpaper_directory = new.wallpaper_directory;
+        self.terminal = new.terminal;
+        self.launcher = new.launcher;
+        self.program_bindings = new.program_bindings;
+        self.bindings = new.bindings;
+        self.appearance = new.appearance;
+        self.float_dialogs = new.float_dialogs;
+        self.rules = new.rules;
     }
 }
 
@@ -334,12 +348,12 @@ mod tests {
     fn defaults_and_partial_configuration() {
         let defaults = Config::parse("").unwrap();
         assert_eq!(defaults.workspaces, 9);
-        assert_eq!(defaults.keybindings().unwrap().len(), 33);
+        assert_eq!(defaults.keybindings().unwrap().len(), 34);
         assert!(defaults.autostart.is_empty());
         assert!(defaults.program_bindings.is_empty());
         let config =
             Config::parse("workspaces = 3\nterminal = ['kitty', '--single-instance']").unwrap();
-        assert_eq!(config.keybindings().unwrap().len(), 21);
+        assert_eq!(config.keybindings().unwrap().len(), 22);
         assert_eq!(config.terminal[1], "--single-instance");
         Config::parse(include_str!("../config/mywm.toml")).unwrap();
     }
@@ -388,7 +402,7 @@ mod tests {
             "[program_bindings.browser]\nkeys = ['Super+b', 'Super+Shift+b']\ncommand = ['firefox', '--private-window']",
         )
         .unwrap();
-        assert_eq!(config.keybindings().unwrap().len(), 35);
+        assert_eq!(config.keybindings().unwrap().len(), 36);
         let binding = config.program_bindings.get("browser").unwrap();
         assert_eq!(binding.command, ["firefox", "--private-window"]);
     }

@@ -40,6 +40,7 @@ text = "#cdd6f4"
 muted_text = "#a6adc8"
 
 [bindings]
+reload = ["Super+Shift+r"]
 wallpaper = ["Super+Shift+w"]
 lock = ["Super+Escape"]
 terminal = ["Super+Return"]

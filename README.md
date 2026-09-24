@@ -163,6 +163,7 @@ HDMI-A-1 = [4, 5, 6]
 DP-1 = [7, 8, 9]
 
 [bindings]
+reload = ["Super+Shift+r"]
 focus_left = ["Super+h", "Super+Left"]
 focus_right = ["Super+l", "Super+Right"]
 workspace_modifiers = "Super"
@@ -191,9 +192,15 @@ Beispiel `command = ["sh", "-lc", "..."]`.
 
 Unbekannte Optionen, doppelte Tastenkürzel und ungültige Werte brechen den Start
 mit einer Fehlermeldung ab. Terminalargumente werden direkt übergeben, ohne
-Shell-Auswertung. Änderungen gelten nach einem Neustart; Live-Reload ist noch
-nicht implementiert. Physische Monitore werden weiterhin separat durch
-`config/kanshi.conf` konfiguriert.
+Shell-Auswertung.
+
+`Super+Shift+R` lädt die Konfiguration neu. Die neue Datei wird zuerst vollständig
+validiert; bei einem Fehler bleiben Config und Bindings unverändert. Tastenkürzel,
+Programm-Bindings, Terminal, Launcher, Darstellung, Wallpaper-Verzeichnis und
+Regeln werden live übernommen. Änderungen an Workspace-Anzahl und -Zuordnung,
+Tastaturlayout, Idle-Zeiten und Autostart gelten erst nach einem Sitzungsneustart.
+Autostart-Programme werden durch einen Reload nicht erneut ausgeführt. Physische
+Monitore werden weiterhin separat durch `config/kanshi.conf` konfiguriert.
 
 ## Fensterregeln
 
