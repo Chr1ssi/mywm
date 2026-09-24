@@ -1,319 +1,74 @@
 # mywm
 
-Ein experimenteller Windowmanager in Rust für River 0.4 und dessen
-`river-window-management-v1`-Protokoll. River übernimmt das Compositing,
-mywm die Fensteranordnung und Tastenkürzel.
+mywm ist ein experimenteller, in Rust geschriebener Windowmanager für
+[River](https://codeberg.org/river/river) 0.4. River übernimmt das Wayland-
+Compositing und die Ein-/Ausgabe; mywm implementiert Fensteranordnung,
+Workspaces, Tastenkürzel, Regeln und Sitzungssteuerung über Rivers
+`river-window-management-v1`-Protokoll.
 
-## Layout und Bedienung
+Das Projekt richtet sich derzeit an eine persönliche, monitorübergreifende
+Desktop-Umgebung. Es ist benutzbar und als `v0.1.0` veröffentlicht, aber noch
+nicht als universeller oder stabiler Desktop gedacht.
 
-Die Projektkonfiguration verteilt neun feste Workspaces auf drei Monitore, jeweils mit einem horizontalen Fensterstreifen:
+## Funktionen
 
-- Ein Fenster nutzt die gesamte Monitorfläche.
-- Ab zwei Fenstern bekommt jedes die halbe Monitorbreite und volle Höhe.
-- Neue Fenster werden rechts angehängt und fokussiert.
-- Beim Fokuswechsel scrollt der Ausschnitt nur so weit wie nötig.
-- Navigation endet am ersten bzw. letzten Fenster und wechselt keinen Monitor.
-- Jeder Workspace behält seine Fensterreihenfolge, seinen Fokus und Scrollversatz. Neue Fenster erscheinen
-  auf dem Monitor unter dem Mauszeiger, ersatzweise auf dem aktiven/ersten Monitor.
+- horizontales Scrolling-Layout mit individuell skalierbaren Spalten
+- Floating-Fenster mit Mausverschiebung und Größenänderung
+- unabhängige Workspaces pro Monitor sowie feste Monitorzuordnungen
+- Hotplug-Unterstützung ohne Verlust der Workspace-Zuordnung
+- konfigurierbare Tastenkürzel, Programmstarter und Autostart-Befehle
+- Fensterregeln für App-ID, Dialoge, Workspace und Floating-Modus
+- Vollbild für Wayland- und Xwayland-Anwendungen
+- reservierbarer Gaming-Workspace mit automatischer App-Zuordnung
+- Live-Reload für den größten Teil der TOML-Konfiguration
+- Gaps, Fokusrahmen und eine gemeinsame Farbpalette
+- Quickshell-Oberfläche mit Bar, Launcher, Wallpaper-Picker, Audio,
+  Mediensteuerung, Systemtray und Benachrichtigungen
+- Sperrbildschirm, Idle-Timer, Monitor-Standby und Sitzungsende
+- Nix-Flake mit Paket, Overlay und NixOS-Modul
 
-| Tastenkürzel | Aktion |
-| --- | --- |
-| Super + Return | Kitty starten |
-| Super + Escape | Sitzung sperren |
-| Super + Shift + W | Wallpaper-Picker öffnen |
-| Super + Space | Quickshell-App-Launcher öffnen |
-| Super + H / Pfeil links | Linkes Fenster fokussieren |
-| Super + L / Pfeil rechts | Rechtes Fenster fokussieren |
-| Super + Shift + H / Pfeil links | Fenster nach links verschieben |
-| Super + Shift + L / Pfeil rechts | Fenster nach rechts verschieben |
-| Super + Shift + Pfeil hoch/runter | Fenster in den vorigen/nächsten Workspace dieses Monitors verschieben |
-| Super + Ctrl + Pfeiltasten | Vorigen/nächsten Workspace dieses Monitors anzeigen |
-| Super + V | Fokussiertes Fenster zwischen Scrolling und Floating umschalten |
-| Super + linke Maustaste | Floating-Fenster unter dem Mauszeiger verschieben |
-| Super + rechte Maustaste | Floating-Fenster oder eine gekachelte Spalte skalieren |
-| Super + Q | Fokussiertes Fenster zum Schließen auffordern |
-| Super + 1…9 | Globalen Workspace und dessen Monitor auswählen |
-| Super + Shift + 1…9 | Fokussiertes Fenster auf den Ziel-Workspace verschieben, auch monitorübergreifend |
-| Super + M | River-Sitzung einschließlich mywm beenden; zurück zur startenden TTY |
+## Abhängigkeiten
 
-## Tastaturlayout
+### Laufzeit
 
-mywm konfiguriert alle Tastaturen über Rivers XKB-Schnittstelle, einschließlich
-später angeschlossener Geräte. Standard ist Deutsch (QWERTZ):
+| Komponente | Verwendung | Erforderlich |
+| --- | --- | --- |
+| River 0.4 oder neuer | Wayland-Compositor und Protokollserver | ja |
+| Kanshi | Monitorkonfiguration | ja, für das mitgelieferte Startskript |
+| Quickshell (getestet mit 0.3.1) | Bar, Launcher und Wallpaper | ja, für die mitgelieferte Oberfläche |
+| `libxkbcommon` / `xkbcli` | Validierung und Kompilierung der Tastaturbelegung | ja |
+| swaylock | Sperrbildschirm | ja, für das mitgelieferte Startskript |
+| swayidle | Idle- und Suspend-Ereignisse | ja, für das mitgelieferte Startskript |
+| wlopm | Monitor-Standby | ja, für das mitgelieferte Startskript |
+| D-Bus und systemd | Sitzungsumgebung, Portale und Power-Aktionen | empfohlen |
+| `xdg-desktop-portal`, GTK- und wlr-Backend | Dateiauswahl und Bildschirmfreigabe | empfohlen |
+| Zenity | Auswahl einer Quelle bei Bildschirmfreigabe | optional |
+| PipeWire und WirePlumber | Audioanzeige und Audiosteuerung der Bar | optional |
+| Xwayland | X11-Anwendungen und viele Spiele | optional |
+| Kitty | voreingestellter Terminalemulator | austauschbar |
 
-```toml
-[keyboard]
-layout = "de"
-variant = ""
-options = ""
-```
+Das NixOS-Modul installiert und konfiguriert die für die mitgelieferte Sitzung
+benötigten Komponenten. Eigene Startskripte können einzelne Integrationen
+ersetzen oder weglassen.
 
-`variant` erlaubt beispielsweise `nodeadkeys`, `options` zusätzliche XKB-Optionen.
-Die leere Variante verwendet das normale deutsche Layout mit Akzenttasten.
-Änderungen gelten nach WM-Neustart. Zum Kompilieren der Keymap benötigt mywm
-`xkbcli` (Arch/CachyOS: Paket `libxkbcommon`); ungültige Layouts werden vor dem
-Verbindungsaufbau zu River abgewiesen. Die Einstellung gilt auch für den Launcher
-und andere Anwendungen, unabhängig von deren Sprache.
+### Bauen aus dem Quellcode
 
-## Gaps und Rahmen
+- Rust mit Cargo und Edition-2024-Unterstützung
+- River 0.4 einschließlich der XML-Protokolle unter
+  `/usr/share/river-protocols/stable/`
+- eine C-Toolchain für native Rust-Abhängigkeiten
 
-In `config/mywm.toml` lassen sich Abstände und Fokusfarben einstellen:
+Das separate Repository
+[`mywm-shell`](https://github.com/Chr1ssi/mywm-shell) wird nur für die
+Quickshell-Oberfläche benötigt. Für lokale Entwicklung werden beide Repositories
+standardmäßig nebeneinander erwartet.
 
-```toml
-[appearance]
-gaps_inner = 8
-gaps_outer = 8
-border_width = 2
-active_border = "#89b4fa"
-inactive_border = "#45475a"
-background = "#1e1e2e"
-surface = "#313244"
-text = "#cdd6f4"
-muted_text = "#a6adc8"
-```
+## Installation
 
-Die Werte sind logische Pixel. `gaps_inner` ist der Abstand zwischen gekachelten
-Fensterrahmen, `gaps_outer` der Abstand zur nutzbaren Monitorfläche (einschließlich
-reservierter Bar-Flächen). Ein einzelnes gekacheltes Fenster nutzt die ganze
-Fläche abzüglich Außenabstand und Rahmen. Ab zwei Fenstern passen zwei gleich
-breite Rahmen mit dem konfigurierten Zwischenraum in den sichtbaren Ausschnitt.
+### NixOS
 
-Floating-Fenster erhalten ebenfalls Rahmen; Außen-/Innenabstände gelten für das
-Scrolling-Layout. Ihre gespeicherte Geometrie bezeichnet die Fläche inklusive
-Rahmen. Anwendungsseitige Titelleisten bleiben erhalten. Wenn eine Shell-Oberfläche
-Tastaturfokus hat, zeigen alle Fenster die inaktive Rahmenfarbe.
-
-Gaps erlauben Werte von 0 bis 128, Rahmenbreiten von 0 bis 32. Farben verwenden
-`#RRGGBB`. Mit `0` lassen sich Gaps und Rahmen abschalten. Auf sehr kleinen
-Flächen werden Abstände/Rahmen begrenzt, sodass die Inhaltsgröße positiv bleibt.
-Änderungen gelten nach einem Neustart.
-
-## Floating
-
-`Super+V` löst ein Fenster aus dem Scrolling-Layout. Beim ersten Umschalten wird
-es mit ungefähr zwei Dritteln der Monitorbreite und -höhe zentriert. Floating-
-Fenster zählen nicht zur Spaltenaufteilung: Bleibt ein gekacheltes Fenster übrig,
-bekommt es die volle Monitorfläche. Floating-Fenster liegen über gekachelten
-Fenstern; das zuletzt fokussierte Floating-Fenster liegt oben.
-
-Verschieben und Skalieren mit der Maus funktionieren nur für Floating-Fenster.
-Auch entsprechende Anfragen von anwendungseigenen Titelleisten und Fensterkanten
-werden unterstützt. Die rechte Maustaste skaliert von der Ecke, die dem Zeiger
-am nächsten liegt. Position und Größe bleiben auf den zugeordneten Monitor
-begrenzt; Ziehen auf einen anderen Monitor ist noch nicht implementiert.
-
-Floating-Fenster gehören weiterhin zu ihrem Workspace. Größe und Position werden
-beim Wechseln und Verschieben zwischen Workspaces desselben Monitors sowie beim erneuten Umschalten
-auf Floating wiederhergestellt (bei kleinerem Monitor begrenzt). `Super+H/L`
-navigiert durch alle Fenster in Workspace-Reihenfolge. `Super+Shift+H/L` ordnet
-nur gekachelte Fenster um. Beim Zurückschalten ins Scrolling-Layout bleibt die
-bisherige Position im Fensterstreifen erhalten.
-
-In `[bindings]` lässt sich `toggle_floating = ["Super+v"]` ändern.
-`pointer_modifiers = "Super"` legt die Modifier für beide Mausaktionen fest.
-Dialogfenster mit einem Elternfenster starten standardmäßig auf Floating; Rules können dies überschreiben.
-Auch eine erst später gemeldete Dialogbeziehung schaltet das Fenster noch auf Floating.
-
-Gekachelte Fenster lassen sich mit `Super` und der rechten Maustaste horizontal skalieren. Die
-Spaltenbreite bleibt beim Scrollen, Umordnen und Workspace-Wechsel erhalten.
-
-mywm setzt über Rivers Libinput-Protokoll für Zeigegeräte mit Unterstützung
-das Beschleunigungsprofil `flat` und die Geschwindigkeit `0` (neutral).
-Das gilt auch nach erneutem Anschließen. Bewegungen werden dadurch nicht
-abhängig von ihrer Geschwindigkeit beschleunigt; die Hardware-DPI bleiben wirksam.
-Ohne Libinput-Protokoll (etwa bei verschachteltem River) gelten die Einstellungen
-des äußeren Compositors.
-
-## Workspaces und TOML-Konfiguration
-
-Jeder Monitor zeigt unabhängig einen Workspace an. Beim Wechsel wird dessen
-letztes fokussiertes Fenster wieder fokussiert; leere Workspaces erhalten keinen
-Fensterfokus. `Super+Shift+1…9` verschiebt das fokussierte Fenster, ohne zum Ziel
-zu wechseln. Auf dem Ziel wird es rechts angehängt und beim nächsten Wechsel
-fokussiert. Neue Fenster erscheinen auf dem aktiven Workspace des Monitors
-unter dem Mauszeiger. Ohne Mausposition wird der aktive/erste Monitor verwendet.
-
-Die Projektkonfiguration ordnet 1–3 DP-3, 4–6 HDMI-A-1 und 7–9 DP-1 zu.
-`Super+1…9` wählt den Workspace auf seinem zugeordneten Monitor; beim
-Monitorwechsel folgt der Mauszeiger, damit neue Anwendungen dort erscheinen.
-Die Bar zeigt jeweils nur die zugeordneten Nummern. `Super+Ctrl+Links/Hoch` und
-`Super+Ctrl+Rechts/Runter` wechseln zyklisch zwischen den Workspaces des aktuellen Monitors.
-`Super+Shift+Hoch/Runter` verschiebt das fokussierte Fenster entsprechend. Ein fünf Pixel breiter
-Marker über die gesamte linke bzw. rechte Bildschirmkante erscheint nur dann, wenn in dieser
-Richtung gekachelte Fenster außerhalb des sichtbaren Ausschnitts liegen. Der Marker reserviert
-diesen Rand, damit er nicht vom Fensterinhalt überdeckt wird.
-
-## Gaming-Workspace
-
-Mit `gaming_workspace` lässt sich ein Workspace ausschließlich für Spiele reservieren.
-`game_app_id_prefixes` enthält die erlaubten App-ID-Präfixe; passende Fenster werden automatisch
-dorthin gelegt. Andere Fenster dürfen dort weder neu erscheinen noch per Tastenkürzel
-hineingeschoben werden. Dialoge eines Spiels gelten über ihre Elternkette ebenfalls als Spiel.
-Die mitgelieferte Konfiguration reserviert Workspace 3 auf DP-3 (dem Hauptmonitor) und erkennt
-Steam-Spiele sowie Gamescope:
-
-```toml
-gaming_workspace = 3
-game_app_id_prefixes = ["steam_app_", "gamescope"]
-```
-
-Weitere Präfixe lassen sich anhand der `Window … app_id: …`-Logzeilen ergänzen.
-
-Wird ein Monitor entfernt, werden seine Workspaces auf den ersten verbleibenden
-Monitor übernommen und behalten ihre Nummer. Mit konfigurierter Monitorzuordnung
-wandern sie beim Wiederanschließen automatisch zurück. Wenn alle Monitore entfernt
-werden, bleibt die Workspace-Zuordnung bis zum nächsten angeschlossenen Monitor
-erhalten. Über einen Neustart hinweg wird der Sitzungszustand noch nicht gespeichert.
-
-[`config/mywm.toml`](config/mywm.toml) enthält die bearbeitbaren Standardwerte.
-Die Konfiguration wird beim Start geladen:
-
-1. `MYWM_CONFIG`, falls gesetzt (ein falscher Pfad ist ein Fehler).
-2. `$XDG_CONFIG_HOME/mywm/config.toml`, sonst `~/.config/mywm/config.toml`.
-3. Ohne persönliche Datei verwendet das Startskript die Projektdatei;
-   ein direkt gestartetes Binary verwendet eingebaute Standardwerte.
-
-Beispiel für die globale Monitorzuordnung und zusätzliche Terminalargumente:
-
-```toml
-workspaces = 9
-terminal = ["kitty", "--single-instance"]
-autostart = [["firefox"], ["vesktop", "--start-minimized"]]
-
-[program_bindings.browser]
-keys = ["Super+b", "Super+Shift+b"]
-command = ["firefox"]
-
-[workspace_outputs]
-DP-3 = [1, 2, 3]
-HDMI-A-1 = [4, 5, 6]
-DP-1 = [7, 8, 9]
-
-[bindings]
-reload = ["Super+Shift+r"]
-focus_left = ["Super+h", "Super+Left"]
-focus_right = ["Super+l", "Super+Right"]
-workspace_modifiers = "Super"
-move_to_workspace_modifiers = "Super+Shift"
-```
-
-Bei gesetztem `workspace_outputs` muss jede Workspace-Nummer genau einmal
-zugeordnet sein. Ohne diese Tabelle stehen die Nummern wie bisher auf jedem
-Monitor unabhängig zur Verfügung. Änderungen benötigen einen Sitzungsneustart.
-
-Fehlende Werte behalten ihre Standards. Workspace-Anzahl: 1 bis 9. Tastenkürzel
-verwenden `Super`, `Shift`, `Ctrl`/`Control` und `Alt`, kombiniert mit Buchstaben
-(a–z), Ziffern (0–9), `Return`/`Enter`, `Left`, `Right`, `Up`, `Down`, `Space`,
-`Tab` oder `Escape`/`Esc`. Die Schreibweise ist unabhängig von Groß-/Kleinschreibung;
-für Shift muss ausdrücklich `Shift` angegeben werden. Leere Listen deaktivieren
-eine Aktion. Workspace-Kürzel werden automatisch aus den Modifiern und den
-Ziffern 1 bis zur konfigurierten Anzahl gebildet.
-
-`autostart` startet jeden aufgeführten Befehl einmal pro Sitzung, nachdem die
-Wayland-, D-Bus- und Portal-Umgebung eingerichtet wurde. Unter
-`[program_bindings.<name>]` lassen sich beliebig benannte Programmaktionen mit
-einer oder mehreren Tasten definieren. `command` und die Einträge in `autostart`
-enthalten das Programm gefolgt von seinen Argumenten; eine Shell wird nicht
-ausgewertet. Für Shell-Funktionen muss sie ausdrücklich angegeben werden, zum
-Beispiel `command = ["sh", "-lc", "..."]`.
-
-Unbekannte Optionen, doppelte Tastenkürzel und ungültige Werte brechen den Start
-mit einer Fehlermeldung ab. Terminalargumente werden direkt übergeben, ohne
-Shell-Auswertung.
-
-`Super+Shift+R` lädt die Konfiguration neu. Die neue Datei wird zuerst vollständig
-validiert; bei einem Fehler bleiben Config und Bindings unverändert. Tastenkürzel,
-Programm-Bindings, Terminal, Launcher, Darstellung, Wallpaper-Verzeichnis und
-Regeln werden live übernommen. Änderungen an Workspace-Anzahl und -Zuordnung,
-Tastaturlayout, Idle-Zeiten und Autostart gelten erst nach einem Sitzungsneustart.
-Autostart-Programme werden durch einen Reload nicht erneut ausgeführt. Physische
-Monitore werden weiterhin separat durch `config/kanshi.conf` konfiguriert.
-
-## Fensterregeln
-
-Regeln stehen als `[[rules]]`-Blöcke in der TOML-Datei. Die mitgelieferte Datei
-enthält auskommentierte Beispiele; es sind keine App-Zuordnungen voreingestellt.
-
-```toml
-[[rules]]
-app_id = "firefox"
-workspace = 2
-
-[[rules]]
-app_id = "org.gnome.Calculator"
-floating = true
-
-[[rules]]
-app_id = "my.application"
-dialog = true
-floating = false
-```
-
-`app_id` vergleicht die vollständige App-ID, einschließlich Groß-/Kleinschreibung,
-ohne Wildcards oder reguläre Ausdrücke. `dialog = true` trifft Fenster mit einem
-Elternfenster, `false` solche ohne Elternfenster. Sind beide Selektoren angegeben,
-müssen beide passen. Mindestens ein Selektor und eine Aktion sind erforderlich.
-Bei mehreren passenden Regeln gewinnt die letzte Angabe **je Eigenschaft**;
-ein fehlendes Feld überschreibt keine vorherige Angabe.
-
-`workspace` verwendet Nummern von 1 bis zur konfigurierten Anzahl und bezieht sich
-bei gesetztem `workspace_outputs` auf den dort zugeordneten Monitor, sonst auf
-den bisherigen Zielmonitor. Ein Fenster auf einem inaktiven Workspace erscheint
-im Hintergrund; die Regel wechselt weder Workspace noch Tastaturfokus.
-
-Dialoge übernehmen zunächst Monitor und Workspace ihres Elternfensters. Die
-Option `float_dialogs = true` auf oberster TOML-Ebene (vor `[bindings]`) aktiviert
-das automatische Floating; `false` deaktiviert es. Regeln können sowohl Floating
-als auch die geerbte Workspace-Nummer überschreiben. Beim Fokussieren eines
-Dialogs scrollt das Layout dessen gekacheltes Elternfenster ebenfalls ins Bild.
-
-Regeln werden **einmal beim ersten Einordnen** angewandt, mit den bis dahin
-bekannten App-ID-/Parent-Angaben. Spätere App-ID-, Titel- oder Parent-Änderungen
-lösen keine erneute Regelanwendung aus. Manuelle Änderungen mit Tastenkürzeln
-bleiben dadurch erhalten. Fenster, deren Dialogbeziehung erst später bekannt
-wird, können weiterhin mit `Super+V` umgeschaltet werden. Änderungen an der
-Regeldatei gelten nach einem Neustart für neu eingeordnete Fenster.
-
-mywm protokolliert empfangene App-IDs als `Window … app_id: …`; damit lässt sich
-der exakte Bezeichner einer Anwendung ermitteln. Ungültige Workspace-Nummern,
-unbekannte Optionen und Regeln ohne Selektor/Aktion werden beim Start abgewiesen.
-
-## Bauen
-
-Benötigt Rust/Cargo, River 0.4, Kitty und die River-Protokollbeschreibungen unter
-`/usr/share/river-protocols/stable/`. Die XML-Dateien werden beim Build eingelesen.
-
-```sh
-cargo build
-cargo test
-cargo clippy --all-targets -- -D warnings
-python tests/river_protocol.py
-python tests/rules_protocol.py
-python tests/layer_shell_protocol.py
-python tests/appearance_protocol.py
-python tests/launcher_command.py
-python ../mywm-shell/tests/launcher_smoke.py
-python ../mywm-shell/tests/bar_smoke.py
-python tests/session_protocol.py
-python tests/session_smoke.py
-python ../mywm-shell/tests/wallpaper_smoke.py
-```
-
-Der Python-Test verbindet das gebaute Binary mit einem isolierten Protokollpeer
-und prüft die River-Anfragen für Sichtbarkeit, Fokus, Workspace-Wechsel,
-Verschieben, Monitorwechsel, Floating, Mausoperationen und Sitzungsende. Er steuert keine Desktop-Sitzung;
-Rendering und echte Tastatureingaben müssen weiterhin unter River geprüft werden.
-
-### Nix / NixOS
-
-Die Flake baut mywm zusammen mit der passenden Quickshell-Oberfläche:
-
-```sh
-nix build github:Chr1ssi/mywm
-```
-
-Für NixOS stellt sie zusätzlich ein Sitzungsmodul bereit. In einer Flake-basierten
-Systemkonfiguration genügt:
+Die Flake exportiert `packages.default`, `packages.mywm`, `overlays.default` und
+`nixosModules.default`.
 
 ```nix
 {
@@ -333,319 +88,208 @@ Systemkonfiguration genügt:
 }
 ```
 
-Das Modul installiert mywm und River, registriert die Wayland-Sitzung beim
-Display-Manager und richtet Xwayland, swaylock sowie die benötigten Portale ein.
-Es erwartet die persönliche Konfiguration unter
-`$XDG_CONFIG_HOME/mywm/config.toml` und Kanshi unter
-`$XDG_CONFIG_HOME/kanshi/config`. `programs.mywm.package` kann überschrieben
-werden; außerdem exportiert die Flake `overlays.default` und das Paket `mywm`.
+Das Modul installiert mywm und River, registriert die Sitzung beim
+Display-Manager und richtet Xwayland, swaylock sowie die GTK-/wlr-Portale ein.
+Ein alternatives Paket lässt sich über `programs.mywm.package` auswählen.
 
-Das Binary `target/debug/mywm` muss innerhalb einer River-Sitzung mit passendem
-`WAYLAND_DISPLAY` laufen. Dort darf noch kein anderer Windowmanager verbunden
-sein. Die Desktop-Startkonfiguration wird von diesem Projekt nicht verändert.
-
-## Monitore und River starten
-
-Die bearbeitbare Datei [`config/kanshi.conf`](config/kanshi.conf) enthält die
-Monitoranordnung. Kanshi konfiguriert Rivers Ausgänge; mywm erhält deren neue
-Positionen und Größen automatisch über das River-Protokoll.
-
-| Ausgang | Native Auflösung / Bildrate | Position | Drehung |
-| --- | --- | --- | --- |
-| HDMI-A-1 (oben) | 2560×1080 @ 60 Hz | 0,0 | normal |
-| DP-3 (Hauptmonitor, unten) | 2560×1440 @ 143,97 Hz | 0,1080 | normal |
-| DP-1 (rechts) | 2560×1440 @ 59,95 Hz | 2560,0 | 270° |
-
-Alle Monitore verwenden Skalierung 1. DP-1 hat nach der Drehung eine logische
-Fläche von 1440×2560 und steht oben bündig mit HDMI-A-1. Die Bildraten und die
-Drehrichtung stammen aus der vorhandenen Hyprland-Konfiguration. „Hauptmonitor“
-bezeichnet hier die Anordnung; eine bevorzugte Start-Fokusauswahl ist noch nicht
-implementiert.
-
-Einmalig Kanshi installieren:
+Das Paket kann unabhängig vom Modul gebaut werden:
 
 ```sh
-sudo pacman -S --needed kanshi
+nix build github:Chr1ssi/mywm
 ```
 
-Danach im Projekt bauen und River aus einer TTY starten:
+### Aus dem Quellcode
 
 ```sh
-cargo build
-river -c /home/chris/Projects/mywm/scripts/river-init
+git clone https://github.com/Chr1ssi/mywm.git
+git clone https://github.com/Chr1ssi/mywm-shell.git
+cd mywm
+cargo build --release
 ```
 
-Xwayland ist aktiviert, damit unter anderem Steam verwendet werden kann.
-Native Wayland-Anwendungen laufen weiterhin direkt unter Wayland. Für einen
-Test ohne Xwayland kann River mit `-no-xwayland` gestartet werden.
-
-Das Startskript startet Kanshi, mywm, swayidle, konfigurierte Autostart-Programme,
-Quickshell-Bar und Wallpaper gemeinsam. Autostart-Programme werden nach dem
-Einrichten der Sitzungsumgebung gestartet.
-Endet Kanshi, mywm oder swayidle, werden die übrigen Prozesse beendet. Ein Fehler der Bar beendet
-dagegen nicht die Fensterverwaltung. Rivers Beenden räumt alle Prozesse auf. Es prüft
-zuvor, ob Binary und Konfiguration vorhanden sind. Bei einem Umzug des Projekts
-muss der Pfad im River-Aufruf angepasst werden.
-
-Zum Ändern des Layouts `position`, `mode`, `scale` oder `transform` in
-`config/kanshi.conf` bearbeiten und die River-Sitzung neu starten. Das Profil
-passt, wenn alle drei benannten Ausgänge angeschlossen sind. In einer
-verschachtelten River-Sitzung unter Hyprland heißen die virtuellen Ausgänge
-anders; dort wird dieses Hardwareprofil nicht angewandt. Ohne passendes Profil
-bleibt Rivers bestehende Ausgangskonfiguration erhalten.
-
-Optional akzeptiert das Startskript `MYWM_BINARY` und `MYWM_MONITOR_CONFIG` als
-Umgebungsvariablen mit alternativen Dateipfaden, etwa für einen Release-Build.
-
-## Start über den Login-Manager
-
-Im Noctalia-Greeter (greetd) steht **mywm (River)** als Sitzung zur Verfügung.
-Der installierte Eintrag `/usr/share/wayland-sessions/mywm.desktop` startet River
-mit unserem `scripts/river-init`, damit WM, Monitore, Bar, Wallpaper und Idle
-zusammen starten. Logout oder Super+M kehrt dann zum Login-Manager zurück.
-Ein River-Start direkt aus einer TTY kehrt weiterhin zu dieser TTY zurück.
-
-Die Vorlage liegt in `config/mywm.desktop`. Sie enthält den absoluten Projektpfad;
-nach einem Umzug muss dieser angepasst und der Eintrag erneut installiert werden:
+Anschließend kann River aus einer TTY gestartet werden:
 
 ```sh
-sudo install -o root -g root -m 644 config/mywm.desktop /usr/share/wayland-sessions/mywm.desktop
+MYWM_BINARY="$PWD/target/release/mywm" river -c "$PWD/scripts/river-init"
 ```
 
-Der bestehende River-/Hyprland-Eintrag und die Standardauswahl werden nicht verändert.
-Es wird das bereits gebaute `target/debug/mywm` verwendet; nach Codeänderungen
-vor dem nächsten Login `cargo build` ausführen.
+Das Startskript verwaltet Kanshi, mywm, swayidle, Bar und Wallpaper als eine
+Sitzung. Endet einer der Kernprozesse, werden die übrigen Prozesse aufgeräumt.
+Es muss innerhalb von River mit gesetztem `WAYLAND_DISPLAY` laufen.
 
-## Eigene Quickshell-Oberfläche
+Für einen Login-Manager kann `config/mywm.desktop` als Vorlage verwendet werden.
+Der darin enthaltene Projektpfad muss vor der Installation angepasst werden.
+Das NixOS-Modul erzeugt den Desktop-Eintrag automatisch und benötigt diese
+manuelle Anpassung nicht.
 
-Ziel ist eine eigene Quickshell-Shell für Bar, Launcher, Benachrichtigungen und
-Wallpaper. mywm übernimmt Fenster, Workspaces, Layout und Regeln.
+## Konfiguration
 
-Die Grundlage auf WM-Seite ist implementiert:
+mywm lädt die erste vorhandene Konfiguration in dieser Reihenfolge:
 
-- `river-layer-shell-v1` wird gebunden, damit River Layer-Shell-Panels zulässt.
-- Reservierte Panelbereiche begrenzen Scrolling, Floating, Clipping und Mausoperationen.
-- Layer-Shell-Launcher können exklusiven oder bedarfsweisen Tastaturfokus erhalten.
-  Beim Schließen wird der gemerkte Fensterfokus wiederhergestellt; auf leeren
-  Workspaces wird der Fensterfokus gelöscht.
-- Panels ohne expliziten Monitor erhalten den Monitor unter dem Mauszeiger bzw.
-  ersatzweise den aktiven/ersten Monitor als Standard. Eine Bar sollte pro
-  Quickshell-Screen eine eigene Panel-Instanz mit explizitem Screen erzeugen.
+1. den Pfad aus `MYWM_CONFIG`, falls gesetzt
+2. `$XDG_CONFIG_HOME/mywm/config.toml`
+3. `~/.config/mywm/config.toml`
+4. die mitgelieferte Beispielkonfiguration beim Start über `river-init`
+5. eingebaute Standardwerte beim direkten Start des Binaries
 
-### Launcher
-
-Quickshell 0.3.1 wird benötigt (`sudo pacman -S --needed quickshell`).
-`Super+Space` öffnet den Launcher auf dem Monitor unter dem Mauszeiger.
-Tippen filtert installierte Desktop-Anwendungen nach Namen, Beschreibung und
-Schlüsselwörtern. Pfeiltasten oder Tab/Shift+Tab wählen aus; Enter oder ein
-Mausklick startet die App. Escape schließt den Launcher. Mehrfaches Öffnen
-erzeugt keine zusätzlichen Instanzen.
-
-Terminal-Anwendungen verwenden den konfigurierten `terminal`-Befehl mit `-e`;
-der Terminalemulator muss diese Option unterstützen. Argumente und Arbeitsordner
-aus Desktop-Einträgen bleiben erhalten. Es findet keine Shell-Auswertung statt.
-
-Die gemeinsame Palette steht in `[appearance]`: `background`, `surface`, `text`,
-`muted_text`, dazu `active_border` als Akzentfarbe und `inactive_border` als
-Trennfarbe. mywm übergibt diese Farben an Quickshell; `../mywm-shell/quickshell/Theme.qml`
-bündelt sie für die Oberfläche und spätere Komponenten. Änderungen benötigen
-aktuell einen WM-Neustart. Direkt gestartetes QML verwendet die Systempalette.
-
-Der Launcher läuft nur während der Benutzung. Sein Standardpfad wird beim Build
-aus dem Projektverzeichnis übernommen; nach einem Umzug neu bauen. Optional kann
-auf oberster TOML-Ebene `launcher = ["qs", "-p", "/pfad/shell.qml", "--no-duplicate"]`
-gesetzt werden. Unter `[bindings]` ist `launcher = ["Super+Space"]` das Tastenkürzel.
-
-`tests/launcher_command.py` prüft Tastenkürzel und Übergabe von Palette, Terminal
-und Monitorposition. `../mywm-shell/tests/launcher_smoke.py` startet eine isolierte Headless-
-River-Sitzung mit echtem Quickshell und temporären Test-Anwendungen. Geprüft werden
-Suche, Auswahl, Start inklusive Terminal und Arbeitsordner sowie Schließen und
-Wiederöffnen. Optional erzeugt `MYWM_LAUNCHER_SCREENSHOT=/tmp/launcher.png`
-mit installiertem `grim` einen Screenshot. Echte Tastatureingaben und die
-Monitorwahl auf der Hardware sind weiterhin im normalen Testbetrieb zu prüfen.
-
-### Topbar
-
-Das River-Startskript startet `../mywm-shell/quickshell/bar.qml` automatisch auf jedem Monitor.
-Die Bar reserviert oben 36 logische Pixel, damit Fenster sie nicht verdecken.
-
-- Links: Workspaces dieses Monitors. Klick wechselt; die Akzentfarbe markiert den
-  aktiven Workspace, ein Punkt kennzeichnet belegte Workspaces.
-- Mitte: deutsches Datum und Uhrzeit im 24-Stunden-Format.
-- Rechts: Lautstärkeregler (0–100 %) für den aktuellen PipeWire-Standardausgang;
-  Klick auf die Prozentanzeige schaltet stumm. Ohne Ausgang ist die Bedienung deaktiviert.
-- Power: Logout, Reboot und Shutdown, jeweils mit Bestätigung. Escape schließt
-  das Menü. Logout beendet diese River-Sitzung über mywm; Reboot/Shutdown verwenden
-  `systemctl reboot`/`systemctl poweroff`. Die Berechtigungen der Sitzung gelten;
-  bei einem Fehler bleibt das Menü mit einer Fehlermeldung geöffnet.
-
-Die Bar verwendet dieselbe TOML-Palette wie Launcher und WM. Innerhalb eines von
-mywm gestarteten Terminals lässt sie sich mit `target/debug/mywm --bar` erneut
-starten; `MYWM_SOCKET` muss auf die Sitzung zeigen. Das Startskript setzt diese
-Variable automatisch. Mehrfachstarts erzeugen keine zweite Bar.
-
-`../mywm-shell/tests/bar_smoke.py` prüft drei virtuelle Monitore mit je drei Workspaces, Workspace-Wechsel und
-Wiederherstellung nach Bar-Neustart, Lautstärke/Stummschaltung auf einem separaten
-PipeWire-Testserver sowie Logout in der isolierten River-Sitzung. Reboot/Shutdown
-werden durch harmlose Testbefehle ersetzt und inklusive Bestätigung geprüft.
-Der Test benötigt zusätzlich `pipewire`, `pw-metadata` und `pw-dump`.
-
-Benachrichtigungen folgen.
-Architektur und nächste Schritte: [docs/quickshell.md](docs/quickshell.md).
-
-## Wallpaper und Picker
-
-**Super+Shift+W** öffnet den Picker auf dem Monitor unter dem Mauszeiger.
-Vorschaubilder lassen sich anklicken oder mit Pfeiltasten und Enter auswählen;
-Tippen filtert Dateinamen, Escape schließt ohne Änderung. Das gemeinsame Theme
-gilt auch für den Picker.
-
-Die Sammlung wird auf oberster TOML-Ebene konfiguriert:
+Eine vollständige Beispielkonfiguration liegt unter
+[`config/mywm.toml`](config/mywm.toml). Die wichtigsten Bereiche sind:
 
 ```toml
-wallpaper_directory = "/home/chris/Bilder/Wallpaper"
+workspaces = 9
+terminal = ["kitty"]
+wallpaper_directory = "/home/user/Pictures/Wallpapers"
+float_dialogs = true
+
+[workspace_outputs]
+DP-1 = [1, 2, 3]
+HDMI-A-1 = [4, 5, 6]
+
+[keyboard]
+layout = "de"
+variant = ""
+options = ""
+
+[appearance]
+gaps_inner = 4
+gaps_outer = 4
+border_width = 2
+active_border = "#89b4fa"
+inactive_border = "#45475a"
+
+[bindings]
+reload = ["Super+Shift+r"]
+terminal = ["Super+Return"]
+launcher = ["Super+Space"]
 ```
 
-JPG/JPEG, PNG, WebP und BMP im angegebenen Ordner werden angezeigt; Unterordner
-werden nicht durchsucht. Bei jedem Öffnen wird die Liste aktualisiert. Die
-Originalbilder bleiben unverändert. Vor der ersten Auswahl wird das erste Bild
-in Dateinamen-Reihenfolge angezeigt.
+`workspace_outputs` ist optional. Wenn es gesetzt ist, muss jede Workspace-
+Nummer genau einmal einem Ausgang zugeordnet sein. Ohne die Tabelle stehen die
+Workspaces auf jedem Monitor unabhängig zur Verfügung.
 
-Das Wallpaper ist **ein durchgehendes Bild über die gesamte Monitoranordnung**.
-Quickshell berechnet deren gemeinsame Begrenzungsfläche in logischen Koordinaten
-und skaliert das Bild proportional, bis diese vollständig gefüllt ist. Jeder
-Monitor zeigt den Ausschnitt an seiner Position, einschließlich Höhenversatz,
-Hochkant und negativer Koordinaten. Nicht von Monitoren bedeckte Bereiche zeigen
-keinen Bildausschnitt; ein anderes Seitenverhältnis führt zu zentriertem Zuschnitt.
-Physische Bildschirmränder werden dabei nicht kompensiert.
+Die mitgelieferte Kanshi-Datei unter `config/kanshi.conf` enthält eine
+rechnerspezifische Monitoranordnung und sollte für das eigene System ersetzt
+werden. Das NixOS-Modul erwartet sie unter
+`$XDG_CONFIG_HOME/kanshi/config`; die mywm-Konfiguration liegt unter
+`$XDG_CONFIG_HOME/mywm/config.toml`.
 
-Die Auswahl wird atomar unter `$XDG_STATE_HOME/mywm/wallpaper.json` gespeichert
-(standardmäßig `~/.local/state/mywm/wallpaper.json`) und beim Sitzungsstart geladen.
-Nach Monitoränderungen wird die gemeinsame Fläche neu berechnet. Fehlt ein
-gewähltes Bild später, zeigt der betroffene Hintergrund die Theme-Farbe; der
-Picker bietet eine neue Auswahl an. Wallpaper und Picker laufen gemeinsam in
-`../mywm-shell/quickshell/wallpaper.qml`, unabhängig von Bar und Launcher. Bei Bedarf lässt sich
-der Prozess mit `target/debug/mywm --wallpaper` aus einem mywm-Terminal neu starten.
+### Fensterregeln
 
-`../mywm-shell/tests/wallpaper_smoke.py` prüft Suche, Sonderzeichen, Speichern/Wiederherstellen
-und den tatsächlichen gerenderten Bildverlauf auf versetzten/gedrehten virtuellen
-Monitoren. Es schreibt ausschließlich temporäre Testbilder und Zustandsdateien.
-
-## Sperrbildschirm und Idle
-
-Benötigt `swaylock`, `swayidle` und `wlopm` (bereits installiert). Das Startskript
-prüft diese Abhängigkeiten. **Super+Escape** oder **Power → Sperren** sperrt sofort.
-Alternativ funktioniert in einem mywm-Terminal `target/debug/mywm --lock`.
-Entsperrt wird mit dem Benutzerpasswort über swaylock/PAM; der WM und Quickshell
-lesen keine Passwörter. Der Locker verwendet die gemeinsame Farbpalette.
+Regeln werden beim ersten Einordnen eines Fensters angewandt. App-IDs werden im
+mywm-Log ausgegeben und exakt, einschließlich Groß-/Kleinschreibung, verglichen.
+Bei mehreren passenden Regeln gewinnt die letzte Angabe je Eigenschaft.
 
 ```toml
-[idle]
-lock_after_seconds = 300
-monitor_off_after_seconds = 600
+[[rules]]
+app_id = "firefox"
+workspace = 2
+
+[[rules]]
+app_id = "org.gnome.Calculator"
+floating = true
+
+[[rules]]
+dialog = true
+floating = true
 ```
 
-Nach fünf Minuten Inaktivität wird gesperrt, nach insgesamt zehn Minuten werden
-die Monitore über wlopm ausgeschaltet. Aktivität schaltet sie wieder ein; die
-Sperre bleibt bestehen. `0` deaktiviert einen Timer. Monitor-Standby erfordert
-einen früheren aktivierten Sperr-Timer. Beide Werte dürfen höchstens 86400 sein.
-Änderungen gelten nach Sitzungsneustart. Automatisches Suspend ist nicht aktiviert.
-Wayland-Idle-Inhibitoren, etwa von Videoplayern, werden von swayidle berücksichtigt.
+### Standard-Tastenkürzel
 
-Vor einem über logind ausgelösten Suspend und bei `loginctl lock-session` wird
-ebenfalls gesperrt, unabhängig von den Idle-Timern. Nach Resume werden die Monitore
-eingeschaltet. Der Sperrbefehl wartet auf Rivers bestätigtes `session_locked`;
-Monitor-Standby läuft nur nach erfolgreicher Bestätigung. swayidle hält während
-des before-sleep-Befehls einen logind-Delay-Inhibitor. Dessen systemseitiges Zeitlimit
-gilt weiterhin: ein fehlgeschlagener oder zu langsamer Locker kann einen extern
-angeforderten Suspend nicht dauerhaft verhindern.
+| Tastenkürzel | Aktion |
+| --- | --- |
+| Super + Return | Terminal starten |
+| Super + Space | App-Launcher öffnen |
+| Super + Escape | Sitzung sperren |
+| Super + Shift + W | Wallpaper-Picker öffnen |
+| Super + H/L oder Pfeil links/rechts | Fenster fokussieren |
+| Super + Shift + H/L | gekacheltes Fenster verschieben |
+| Super + V | Floating-Modus umschalten |
+| Super + linke Maustaste | Floating-Fenster verschieben |
+| Super + rechte Maustaste | Fenster beziehungsweise Spalte skalieren |
+| Super + Q | fokussiertes Fenster schließen |
+| Super + 1…9 | Workspace wählen |
+| Super + Shift + 1…9 | Fenster auf einen Workspace verschieben |
+| Super + Ctrl + Pfeiltasten | Workspace des aktuellen Monitors wechseln |
+| Super + M | Sitzung beenden |
 
-Während der Sperre deaktiviert mywm seine Tastatur-/Mausbindings und weist
-Workspace-/Logout-Befehle über IPC ab. Wiederholte Sperraufrufe erzeugen keine
-weiteren Locker. Der Locker verwendet das echte Wayland-Session-Lock-Protokoll,
-kein Vollbildfenster. Ein Locker-Absturz entsperrt die Sitzung nicht automatisch.
+Alle Bindings können geändert oder mit einer leeren Liste deaktiviert werden.
+Zusätzliche Programme lassen sich unter `[program_bindings.<name>]` definieren.
+Befehle werden als Argumentlisten ohne Shell-Auswertung ausgeführt.
 
-Die Tests prüfen echtes Sperren in einer separaten River-Sitzung, Idle-Abfolge,
-Blockieren von Logout und Wiederherstellen der Bindings. Monitor-Power-Befehle
-werden dort aufgezeichnet, und das Entsperren erfolgt ausschließlich im Test per
-Signal an dessen eigenen Locker. Passwortentsperrung, echter Suspend/Resume und
-Monitor-Standby auf der Hardware müssen daher einmal in deiner River-Sitzung
-praktisch geprüft werden.
+### Live-Reload
 
-## Aktuelle Grenzen
+`Super+Shift+R` validiert und lädt die Konfiguration neu. Tastenkürzel,
+Programmbindings, Terminal, Launcher, Darstellung, Wallpaper-Verzeichnis und
+Regeln werden live übernommen. Workspace-Anzahl und -Zuordnung,
+Tastaturbelegung, Idle-Zeiten und Autostart benötigen einen Sitzungsneustart.
+Bei einer ungültigen Datei bleibt die bisherige Konfiguration aktiv.
 
-Noch keine Animationen, konfigurierbaren Spaltenbreiten, gestapelten
-Spalten oder Tastenwiederholung. Es wird ein Seat verwaltet. Reservierte
-Panelbereiche werden über River Layer Shell berücksichtigt. Größen sind
-Vorschläge an Anwendungen; Anwendungen dürfen davon
-abweichen und werden auf ihre vorgesehene Fläche beschnitten (Protokollversion 2+).
-Bei ungerader Monitorbreite bleibt bei zwei Fenstern ein Pixel frei.
+## Oberfläche und Sitzungsintegration
 
-### Titelleisten
+Die Quickshell-Oberfläche wird getrennt in `mywm-shell` entwickelt und von der
+Nix-Flake in das Paket eingebunden. Bei einem manuellen Build sucht mywm im
+benachbarten Verzeichnis `../mywm-shell/quickshell`. Ein anderer Ort kann über
+`MYWM_SHELL_DIR` angegeben werden.
 
-mywm fordert serverseitige Dekorationen an und zeichnet nur die konfigurierten
-Fokus-Ränder, keine Titelleisten. Das gilt für gekachelte und Floating-Fenster.
-Anwendungen, die ausschließlich eigene Dekorationen unterstützen, können ihre
-Titelleiste weiterhin anzeigen; sie muss gegebenenfalls in der Anwendung
-deaktiviert werden. Die Änderung am WM benötigt einen Sitzungsneustart.
+Die Oberfläche umfasst:
 
-## Getrennte Repositories
+- Bar mit Workspaces, Uhr, Audio, Medien, Tray und Power-Menü
+- App-Launcher auf Basis installierter Desktop-Einträge
+- Notification-Daemon mit Toasts und Verlauf
+- ein gemeinsames Wallpaper über die gesamte Monitoranordnung
+- Wallpaper-Picker mit Suche und Tastatursteuerung
 
-Die Quickshell-Oberfläche liegt im Nachbar-Repository `../mywm-shell`.
-mywm enthält Fensterverwaltung, River-Sitzungsstart, Konfiguration und den
-[Integrationsvertrag](docs/quickshell.md). Die Palette bleibt zentral unter
-`[appearance]`; Shell-Integrationstests liegen im Shell-Repository.
+Es darf kein zweiter Freedesktop-Notification-Daemon wie Dunst parallel laufen.
 
-Standardmäßig sucht mywm neben seinem Build-Quellverzeichnis nach
-`mywm-shell/quickshell`. Für andere Installationsorte vor dem Sitzungsstart
-`MYWM_SHELL_DIR` auf den absoluten QML-Ordner setzen. Eine ausdrücklich gesetzte
-`launcher`-Befehlsliste in TOML hat weiterhin Vorrang für den Launcher.
+Für Dateiauswahl verwendet die Sitzung das GTK-Portal. Bildschirmfreigabe und
+Screenshots laufen über `xdg-desktop-portal-wlr`; Zenity dient als grafischer
+Quellen-Chooser. `scripts/session-environment` überträgt dafür die aktuelle
+Wayland-Umgebung an D-Bus und systemd.
 
-Der ignorierte Symlink `quickshell` hält alte Pfade für bereits laufende WM-
-und Quickshell-Prozesse gültig. Nach einem vollständigen Sitzungsneustart mit
-dem neu gebauten WM kann er entfernt werden. Er gehört nicht zum Repository.
+## Entwicklung
 
-## Vollbild
+Die grundlegenden Prüfungen sind:
 
-Vollbild-Anfragen von Anwendungen (z. B. YouTube, Browser-F11 oder Spiele)
-werden auf dem Monitor ihres Workspaces umgesetzt, für Wayland und Xwayland.
-River übernimmt dabei die gesamte Monitorfläche ohne Gaps, Fokus-Ränder oder
-Topbar. Die normale Kachelung und Floating-Geometrie bleiben gespeichert.
-Beim Verlassen von Vollbild werden sie wiederhergestellt. Ein Workspace- oder
-Fensterfokuswechsel setzt die Vollbilddarstellung vorübergehend aus; bei der
-Rückkehr wird sie wieder aktiv, sofern die Anwendung Vollbild nicht beendet hat.
-Monitorwünsche von Anwendungen überschreiben die Workspace-Zuordnung nicht.
+```sh
+cargo fmt --check
+cargo test
+cargo clippy --all-targets -- -D warnings
+```
 
-`python3 tests/fullscreen_protocol.py` prüft die Zustandswechsel und Hotplug.
-`python3 tests/fullscreen_smoke.py` prüft mit einem GTK-Testfenster Wayland und
-Xwayland, die tatsächlichen Bildpunkte über der Bar-Fläche und die Rückkehr
-zur normalen Größe. Dafür werden zusätzlich ein C-Compiler, pkg-config und
-GTK-3-Entwicklungsdateien sowie das Nachbar-Repository mywm-shell benötigt.
+Die Protokolltests starten das gebaute Binary gegen isolierte Wayland-Peers:
 
-## Dateiauswahl-Portale
+```sh
+python3 tests/river_protocol.py
+python3 tests/rules_protocol.py
+python3 tests/layer_shell_protocol.py
+python3 tests/appearance_protocol.py
+python3 tests/session_protocol.py
+```
 
-Ordner- und Dateidialoge verwenden `xdg-desktop-portal` mit dem GTK-Backend.
-`scripts/river-init` ruft nach dem WM-Start `scripts/session-environment` auf:
-Es übergibt die aktuellen Display- und Desktop-Variablen an D-Bus/systemd und
-startet die beiden Portal-Dienste mit dieser Umgebung neu. Ohne diese Übergabe
-kann das GTK-Portal mit `cannot open display` ausfallen.
+Weitere Smoke-Tests verwenden eine verschachtelte River-Sitzung und teilweise
+Quickshell, PipeWire, GTK 3, Xwayland oder Grim. Sie testen tatsächliches
+Rendering und die Integration mit `mywm-shell`; Hardwareverhalten wie echte
+Monitormodi, Suspend und Passwortentsperrung muss weiterhin manuell geprüft
+werden.
 
-`config/river-portals.conf` kann unter
-`~/.config/xdg-desktop-portal/river-portals.conf` installiert werden; es wählt GTK
-für River, ohne die Hyprland-spezifische Konfiguration zu ändern. In einer
-laufenden mywm-Sitzung lässt sich `scripts/session-environment` zur Reparatur
-aufrufen. Dafür müssen `xdg-desktop-portal` und `xdg-desktop-portal-gtk` installiert
-sein. Für Bildschirmfreigabe und Screenshots wird zusätzlich
-`xdg-desktop-portal-wlr` benötigt. `config/river-portals.conf` ordnet ScreenCast
-und Screenshot dem wlr-Backend zu, FileChooser bleibt bei GTK. Das Startskript
-startet das installierte wlr-Backend ebenfalls mit der aktuellen Sitzungsumgebung.
-Nach einer Neuinstallation gegebenenfalls `systemctl --user daemon-reload`
-ausführen und anschließend `scripts/session-environment` starten.
+Die Nix-Ausgaben lassen sich mit folgenden Befehlen prüfen:
 
-Vesktop nach einer Portal-Umstellung neu starten und die Bildschirmfreigabe
-öffnen. Die Quellenauswahl verwendet Zenity im Listenmodus. Dafür
-`config/river-screencast.conf` nach `~/.config/xdg-desktop-portal-wlr/river`
-installieren. Bei Anfragen nach Monitoren und Fenstern überspringt das wlr-Portal
-in seiner automatischen Auswahl Slurp; ohne einen Listen-Chooser scheitert die
-Freigabe dann mit `no output found`. Zenity zeigt die vom Portal angebotenen
-Quellen an und gibt nur die ausdrücklich ausgewählte Quelle zurück.
+```sh
+nix flake check
+nix build .#mywm
+```
+
+## Bekannte Einschränkungen
+
+- Die Konfiguration und Oberfläche sind noch stark auf den ursprünglichen
+  Desktop-Aufbau ausgerichtet.
+- Es wird nur ein Seat verwaltet.
+- Workspace-Zustand wird noch nicht über Sitzungsneustarts hinweg gespeichert.
+- Floating-Fenster können noch nicht mit der Maus zwischen Monitoren gezogen
+  werden.
+- Es gibt noch keine Animationen, gestapelten Spalten oder Tastenwiederholung.
+- mywm zeichnet Fokusrahmen, aber keine eigenen Titelleisten.
+
+Fehlerberichte und fokussierte Beiträge sind willkommen. Wegen des frühen
+Projektstands sollten größere Architekturänderungen vorab in einem Issue
+abgestimmt werden.
