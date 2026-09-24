@@ -147,8 +147,25 @@ fn snapshot(state: &State) -> String {
                 .fold(0u32, |mask, (i, w)| {
                     mask | if w.windows.is_empty() { 0 } else { 1 << i }
                 });
+            let tiled: Vec<_> = o
+                .workspaces
+                .current()
+                .windows
+                .iter()
+                .filter(|id| {
+                    state
+                        .windows
+                        .iter()
+                        .any(|window| window.river_window.id() == **id && !window.floating)
+                })
+                .collect();
+            let focused = tiled
+                .iter()
+                .position(|id| Some(*id) == o.workspaces.current().focused.as_ref());
+            let left = focused.is_some_and(|position| position > 0);
+            let right = focused.is_some_and(|position| position + 1 < tiled.len());
             Some(format!(
-                "{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},{},{}",
                 o.river_output.id().protocol_id(),
                 x,
                 y,
@@ -156,7 +173,9 @@ fn snapshot(state: &State) -> String {
                 height,
                 o.workspaces.active + 1,
                 occupied,
-                crate::monitor_workspaces::mask(state, index)
+                crate::monitor_workspaces::mask(state, index),
+                u8::from(left),
+                u8::from(right)
             ))
         })
         .collect();

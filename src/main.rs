@@ -47,6 +47,7 @@ struct Window {
     fullscreen: bool,
     fullscreen_output: Option<ObjectId>,
     floating_rect: Option<Rect>,
+    tiled_width: Option<i32>,
     border_width: i32,
     app_id: Option<String>,
     parent: Option<ObjectId>,
@@ -114,7 +115,9 @@ enum Action {
     Close,
     ToggleFloating,
     Workspace(usize),
+    WorkspaceRelative(isize),
     MoveToWorkspace(usize),
+    MoveToWorkspaceRelative(isize),
     Program(usize),
 }
 
@@ -129,6 +132,49 @@ struct Drag {
     window: ObjectId,
     initial: Rect,
     kind: DragKind,
+    floating: bool,
+}
+
+fn relative_workspace(state: &State, output: usize, direction: isize) -> Option<usize> {
+    let allowed = monitor_workspaces::mask(state, output);
+    let workspaces: Vec<_> = (0..state.config.workspaces)
+        .filter(|workspace| allowed & (1 << workspace) != 0)
+        .collect();
+    let current = state.outputs[output].workspaces.active;
+    let position = workspaces
+        .iter()
+        .position(|workspace| *workspace == current)?;
+    Some(workspaces[(position as isize + direction).rem_euclid(workspaces.len() as isize) as usize])
+}
+
+fn is_game_window(state: &State, id: &ObjectId) -> bool {
+    let mut current = Some(id.clone());
+    for _ in 0..=state.windows.len() {
+        let Some(window) = current.as_ref().and_then(|id| {
+            state
+                .windows
+                .iter()
+                .find(|window| window.river_window.id() == *id)
+        }) else {
+            return false;
+        };
+        if window.app_id.as_deref().is_some_and(|app_id| {
+            state
+                .config
+                .game_app_id_prefixes
+                .iter()
+                .any(|prefix| app_id.starts_with(prefix))
+        }) {
+            return true;
+        }
+        current = window.parent.clone();
+    }
+    false
+}
+
+fn workspace_accepts(state: &State, workspace: usize, id: &ObjectId) -> bool {
+    state.config.gaming_workspace.map(|number| number - 1) != Some(workspace)
+        || is_game_window(state, id)
 }
 
 fn cancel_drag(state: &mut State) {
@@ -144,11 +190,21 @@ fn update_drag(state: &mut State) {
             .find(|w| w.river_window.id() == drag.window)
             && let Some(output) = window.output.and_then(|i| state.outputs.get(i))
             && output.workspaces.current().windows.contains(&drag.window)
-            && window.floating
             && let Some(Rect { width, height, .. }) = output.work_area()
         {
             if let Some((dx, dy)) = state.drag_delta.take() {
-                window.floating_rect = Some(drag.initial.dragged(drag.kind, dx, dy, width, height));
+                if drag.floating {
+                    window.floating_rect =
+                        Some(drag.initial.dragged(drag.kind, dx, dy, width, height));
+                } else if let DragKind::Resize(edges) = drag.kind {
+                    let delta = if edges.contains(Edges::Left) { -dx } else { dx };
+                    window.tiled_width = Some(
+                        drag.initial
+                            .width
+                            .saturating_add(delta)
+                            .clamp((width / 4).max(100).min(width), width.max(1)),
+                    );
+                }
             }
         } else {
             state.end_drag = true;
@@ -184,7 +240,7 @@ fn update_drag(state: &mut State) {
     let Some(index) = state
         .windows
         .iter()
-        .position(|w| w.river_window.id() == id && w.floating && !w.fullscreen)
+        .position(|w| w.river_window.id() == id && !w.fullscreen)
     else {
         return;
     };
@@ -204,14 +260,31 @@ fn update_drag(state: &mut State) {
     else {
         return;
     };
-    let initial = state.windows[index]
-        .floating_rect
-        .unwrap_or_else(|| Rect::centered(width, height))
-        .constrained(width, height);
+    let floating = state.windows[index].floating;
+    if !floating && matches!(action, PointerAction::Move) {
+        return;
+    }
+    let initial = if floating {
+        state.windows[index]
+            .floating_rect
+            .unwrap_or_else(|| Rect::centered(width, height))
+            .constrained(width, height)
+    } else {
+        let current_width = state.windows[index]
+            .geometry
+            .map(|geometry| geometry.2 + state.windows[index].border_width * 2)
+            .unwrap_or(width / 2);
+        Rect {
+            x: 0,
+            y: 0,
+            width: current_width,
+            height,
+        }
+    };
     let kind = match action {
         PointerAction::Move => DragKind::Move,
         PointerAction::ResizeEdges(edges) => DragKind::Resize(edges),
-        PointerAction::Resize => {
+        PointerAction::Resize if floating => {
             let (x, y) = state.pointer_position.unwrap_or((
                 ox + initial.x + initial.width,
                 oy + initial.y + initial.height,
@@ -228,6 +301,7 @@ fn update_drag(state: &mut State) {
             };
             DragKind::Resize(horizontal | vertical)
         }
+        PointerAction::Resize => DragKind::Resize(Edges::Right),
     };
     state.outputs[output_index].workspaces.focus(&id);
     focus_output(state, output_index);
@@ -245,6 +319,7 @@ fn update_drag(state: &mut State) {
         window: id,
         initial,
         kind,
+        floating,
     });
 }
 
@@ -285,9 +360,28 @@ fn assign_windows(state: &mut State, default_output: usize) {
                 default_output,
                 state.outputs[default_output].workspaces.active,
             ));
-            let workspace = placement.workspace.unwrap_or(workspace);
-            let output = monitor_workspaces::owner(state, workspace).unwrap_or(output);
             let id = window.river_window.id();
+            let mut workspace = placement.workspace.unwrap_or(workspace);
+            let gaming = state.config.gaming_workspace.map(|number| number - 1);
+            let game = is_game_window(state, &id);
+            if game {
+                if let Some(gaming) = gaming {
+                    workspace = gaming;
+                }
+            } else if gaming == Some(workspace) {
+                workspace = (0..state.config.workspaces)
+                    .find(|candidate| {
+                        Some(*candidate) != gaming
+                            && monitor_workspaces::owner(state, *candidate)
+                                .is_none_or(|owner| owner == output)
+                    })
+                    .unwrap_or(workspace);
+                state.outputs[output].workspaces.select(workspace);
+            }
+            let output = monitor_workspaces::owner(state, workspace).unwrap_or(output);
+            if game {
+                state.outputs[output].workspaces.select(workspace);
+            }
             state.windows[index].output = Some(output);
             state.windows[index].floating = placement.floating;
             if workspace == state.outputs[output].workspaces.active {
@@ -369,17 +463,23 @@ fn layout(state: &mut State) {
             width,
             height,
         });
-        let (scroll, columns) = if state.config.appearance.gaps_inner == 0 {
-            scrolling::columns(viewport.width, tiled.len(), focused, workspace.scroll)
-        } else {
-            scrolling::columns_with_gap(
-                viewport.width,
-                tiled.len(),
-                focused,
-                workspace.scroll,
-                state.config.appearance.gaps_inner,
-            )
-        };
+        let widths: Vec<_> = tiled
+            .iter()
+            .map(|id| {
+                state
+                    .windows
+                    .iter()
+                    .find(|window| window.river_window.id() == **id)
+                    .and_then(|window| window.tiled_width)
+            })
+            .collect();
+        let (scroll, columns) = scrolling::variable_columns(
+            viewport.width,
+            &widths,
+            focused,
+            workspace.scroll,
+            state.config.appearance.gaps_inner,
+        );
         workspace.scroll = scroll;
         for (id, (left, column_width)) in tiled.into_iter().zip(columns) {
             if let Some(window) = state
@@ -523,6 +623,14 @@ fn run_actions(state: &mut State, manager: &RiverWindowManagerV1, qh: &QueueHand
                     monitor_workspaces::select(state, output, target);
                 }
             }
+            Action::WorkspaceRelative(direction) => {
+                cancel_drag(state);
+                if let Some(output) = output_at_pointer(state).or(state.focused_output)
+                    && let Some(target) = relative_workspace(state, output, direction)
+                {
+                    monitor_workspaces::select(state, output, target);
+                }
+            }
             Action::ToggleFloating => {
                 cancel_drag(state);
                 if let Some(window) = state
@@ -536,21 +644,33 @@ fn run_actions(state: &mut State, manager: &RiverWindowManagerV1, qh: &QueueHand
                     }
                 }
             }
-            Action::Close | Action::Focus(_) | Action::Move(_) | Action::MoveToWorkspace(_) => {
-                let Some(window) = state
+            Action::Close
+            | Action::Focus(_)
+            | Action::Move(_)
+            | Action::MoveToWorkspace(_)
+            | Action::MoveToWorkspaceRelative(_) => {
+                let Some((window_id, output, floating)) = state
                     .windows
                     .iter()
                     .find(|w| Some(w.river_window.id()) == state.focused_window)
+                    .and_then(|window| {
+                        Some((window.river_window.id(), window.output?, window.floating))
+                    })
                 else {
                     continue;
                 };
-                let Some(output) = window.output else {
-                    continue;
-                };
                 match action {
-                    Action::Close => window.river_window.close(),
+                    Action::Close => {
+                        if let Some(window) = state
+                            .windows
+                            .iter()
+                            .find(|window| window.river_window.id() == window_id)
+                        {
+                            window.river_window.close();
+                        }
+                    }
                     Action::Focus(direction) | Action::Move(direction) => {
-                        if window.floating && matches!(action, Action::Move(_)) {
+                        if floating && matches!(action, Action::Move(_)) {
                             continue;
                         }
                         if matches!(action, Action::Move(_)) {
@@ -572,7 +692,17 @@ fn run_actions(state: &mut State, manager: &RiverWindowManagerV1, qh: &QueueHand
                     }
                     Action::MoveToWorkspace(target) => {
                         cancel_drag(state);
-                        monitor_workspaces::move_window(state, output, target);
+                        if workspace_accepts(state, target, &window_id) {
+                            monitor_workspaces::move_window(state, output, target);
+                        }
+                    }
+                    Action::MoveToWorkspaceRelative(direction) => {
+                        cancel_drag(state);
+                        if let Some(target) = relative_workspace(state, output, direction)
+                            && workspace_accepts(state, target, &window_id)
+                        {
+                            monitor_workspaces::move_window(state, output, target);
+                        }
                     }
                     _ => unreachable!(),
                 }
@@ -813,6 +943,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     fullscreen: false,
                     fullscreen_output: None,
                     floating_rect: None,
+                    tiled_width: None,
                     border_width: 0,
                     app_id: None,
                     parent: None,
@@ -1051,10 +1182,34 @@ impl Dispatch<RiverWindowV1, ()> for State {
                 if let Some(item) = state.windows.iter_mut().find(|w| w.river_window == *window) {
                     item.app_id = app_id;
                 }
+                let id = window.id();
+                if let Some(gaming) = state.config.gaming_workspace.map(|number| number - 1)
+                    && is_game_window(state, &id)
+                    && let Some(source) = state
+                        .windows
+                        .iter()
+                        .find(|item| item.river_window == *window)
+                        .and_then(|item| item.output)
+                {
+                    monitor_workspaces::move_window_id(state, source, gaming, id);
+                    let output = monitor_workspaces::owner(state, gaming).unwrap_or(source);
+                    monitor_workspaces::select(state, output, gaming);
+                }
             }
             Event::Parent { parent } => {
                 if let Some(item) = state.windows.iter_mut().find(|w| w.river_window == *window) {
                     item.parent = parent.map(|p| p.id());
+                    if item.parent.is_some()
+                        && rules::resolve(
+                            &state.config.rules,
+                            item.app_id.as_deref(),
+                            true,
+                            state.config.float_dialogs,
+                        )
+                        .floating
+                    {
+                        item.floating = true;
+                    }
                 }
             }
             Event::PointerMoveRequested { seat } if state.seat.as_ref() == Some(&seat) => {

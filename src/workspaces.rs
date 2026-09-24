@@ -126,6 +126,7 @@ impl<T: Clone + Eq> Workspaces<T> {
         }
     }
 
+    #[cfg(test)]
     pub fn move_focused_to(&mut self, target: usize) {
         if target == self.active || target >= self.entries.len() {
             return;

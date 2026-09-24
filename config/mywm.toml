@@ -2,6 +2,11 @@
 workspaces = 9
 # Fenster mit Elternfenster (z. B. Dateidialoge) standardmäßig frei schwebend.
 float_dialogs = true
+# Workspace 3 liegt auf DP-3 (Hauptmonitor) und ist ausschließlich für Spiele reserviert.
+# Spiele werden automatisch dorthin gelegt; andere Fenster können weder dort starten
+# noch dorthin verschoben werden.
+gaming_workspace = 3
+game_app_id_prefixes = ["steam_app_", "gamescope"]
 # Programm und Argumente getrennt, ohne Shell-Auswertung.
 terminal = ["kitty"]
 wallpaper_directory = "/home/chris/Bilder/Wallpaper"
@@ -48,12 +53,19 @@ launcher = ["Super+Space"]
 close = ["Super+q"]
 exit = ["Super+m"]
 toggle_floating = ["Super+v"]
-# Mit linker Maustaste verschieben, mit rechter skalieren (nur Floating).
+# Mit linker Maustaste Floating-Fenster verschieben; mit rechter Floating-Fenster
+# oder gekachelte Spalten skalieren.
 pointer_modifiers = "Super"
 focus_left = ["Super+h", "Super+Left"]
 focus_right = ["Super+l", "Super+Right"]
 move_left = ["Super+Shift+h", "Super+Shift+Left"]
 move_right = ["Super+Shift+l", "Super+Shift+Right"]
+# Workspace auf dem aktuellen Monitor wechseln (zyklisch).
+workspace_previous = ["Super+Ctrl+Left", "Super+Ctrl+Up"]
+workspace_next = ["Super+Ctrl+Right", "Super+Ctrl+Down"]
+# Fenster in den vorigen/nächsten Workspace des Monitors verschieben.
+move_to_workspace_previous = ["Super+Shift+Up"]
+move_to_workspace_next = ["Super+Shift+Down"]
 # Zusammen mit den Ziffern 1 bis workspaces.
 workspace_modifiers = "Super"
 move_to_workspace_modifiers = "Super+Shift"

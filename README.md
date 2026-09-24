@@ -26,9 +26,11 @@ Die Projektkonfiguration verteilt neun feste Workspaces auf drei Monitore, jewei
 | Super + L / Pfeil rechts | Rechtes Fenster fokussieren |
 | Super + Shift + H / Pfeil links | Fenster nach links verschieben |
 | Super + Shift + L / Pfeil rechts | Fenster nach rechts verschieben |
+| Super + Shift + Pfeil hoch/runter | Fenster in den vorigen/nächsten Workspace dieses Monitors verschieben |
+| Super + Ctrl + Pfeiltasten | Vorigen/nächsten Workspace dieses Monitors anzeigen |
 | Super + V | Fokussiertes Fenster zwischen Scrolling und Floating umschalten |
 | Super + linke Maustaste | Floating-Fenster unter dem Mauszeiger verschieben |
-| Super + rechte Maustaste | Floating-Fenster von der nächstgelegenen Ecke skalieren |
+| Super + rechte Maustaste | Floating-Fenster oder eine gekachelte Spalte skalieren |
 | Super + Q | Fokussiertes Fenster zum Schließen auffordern |
 | Super + 1…9 | Globalen Workspace und dessen Monitor auswählen |
 | Super + Shift + 1…9 | Fokussiertes Fenster auf den Ziel-Workspace verschieben, auch monitorübergreifend |
@@ -110,6 +112,11 @@ bisherige Position im Fensterstreifen erhalten.
 In `[bindings]` lässt sich `toggle_floating = ["Super+v"]` ändern.
 `pointer_modifiers = "Super"` legt die Modifier für beide Mausaktionen fest.
 Dialogfenster mit einem Elternfenster starten standardmäßig auf Floating; Rules können dies überschreiben.
+Auch eine erst später gemeldete Dialogbeziehung schaltet das Fenster noch auf Floating. Das ist
+insbesondere für Einstellungs- und Menüfenster von Steam/Wine-Anwendungen wichtig.
+
+Gekachelte Fenster lassen sich mit `Super` und der rechten Maustaste horizontal skalieren. Die
+Spaltenbreite bleibt beim Scrollen, Umordnen und Workspace-Wechsel erhalten.
 
 mywm setzt über Rivers Libinput-Protokoll für Zeigegeräte mit Unterstützung
 das Beschleunigungsprofil `flat` und die Geschwindigkeit `0` (neutral).
@@ -130,7 +137,26 @@ unter dem Mauszeiger. Ohne Mausposition wird der aktive/erste Monitor verwendet.
 Die Projektkonfiguration ordnet 1–3 DP-3, 4–6 HDMI-A-1 und 7–9 DP-1 zu.
 `Super+1…9` wählt den Workspace auf seinem zugeordneten Monitor; beim
 Monitorwechsel folgt der Mauszeiger, damit neue Anwendungen dort erscheinen.
-Die Bar zeigt jeweils nur die zugeordneten Nummern.
+Die Bar zeigt jeweils nur die zugeordneten Nummern. `Super+Ctrl+Links/Hoch` und
+`Super+Ctrl+Rechts/Runter` wechseln zyklisch zwischen den Workspaces des aktuellen Monitors.
+`Super+Shift+Hoch/Runter` verschiebt das fokussierte Fenster entsprechend. Am linken bzw. rechten
+Rand der Bar erscheint ein Pfeil, wenn dort weitere gekachelte Fenster vorhanden sind.
+
+## Gaming-Workspace
+
+Mit `gaming_workspace` lässt sich ein Workspace ausschließlich für Spiele reservieren.
+`game_app_id_prefixes` enthält die erlaubten App-ID-Präfixe; passende Fenster werden automatisch
+dorthin gelegt. Andere Fenster dürfen dort weder neu erscheinen noch per Tastenkürzel
+hineingeschoben werden. Dialoge eines Spiels gelten über ihre Elternkette ebenfalls als Spiel.
+Die mitgelieferte Konfiguration reserviert Workspace 3 auf DP-3 (dem Hauptmonitor) und erkennt
+Steam-Spiele sowie Gamescope:
+
+```toml
+gaming_workspace = 3
+game_app_id_prefixes = ["steam_app_", "gamescope"]
+```
+
+Weitere Präfixe lassen sich anhand der `Window … app_id: …`-Logzeilen ergänzen.
 
 Wird ein Monitor entfernt, werden seine Workspaces auf den ersten verbleibenden
 Monitor übernommen und behalten ihre Nummer. Mit konfigurierter Monitorzuordnung

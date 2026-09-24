@@ -22,6 +22,8 @@ pub struct Config {
     pub bindings: Bindings,
     pub appearance: crate::appearance::Appearance,
     pub float_dialogs: bool,
+    pub gaming_workspace: Option<usize>,
+    pub game_app_id_prefixes: Vec<String>,
     pub rules: Vec<crate::rules::Rule>,
 }
 
@@ -49,6 +51,8 @@ impl Default for Config {
             bindings: Bindings::default(),
             appearance: crate::appearance::Appearance::default(),
             float_dialogs: true,
+            gaming_workspace: None,
+            game_app_id_prefixes: Vec::new(),
             rules: Vec::new(),
         }
     }
@@ -75,6 +79,10 @@ pub struct Bindings {
     focus_right: Vec<String>,
     move_left: Vec<String>,
     move_right: Vec<String>,
+    workspace_previous: Vec<String>,
+    workspace_next: Vec<String>,
+    move_to_workspace_previous: Vec<String>,
+    move_to_workspace_next: Vec<String>,
     toggle_floating: Vec<String>,
     pointer_modifiers: String,
     workspace_modifiers: String,
@@ -98,6 +106,10 @@ impl Default for Bindings {
             focus_right: keys(&["Super+l", "Super+Right"]),
             move_left: keys(&["Super+Shift+h", "Super+Shift+Left"]),
             move_right: keys(&["Super+Shift+l", "Super+Shift+Right"]),
+            workspace_previous: keys(&["Super+Ctrl+Left", "Super+Ctrl+Up"]),
+            workspace_next: keys(&["Super+Ctrl+Right", "Super+Ctrl+Down"]),
+            move_to_workspace_previous: keys(&["Super+Shift+Up"]),
+            move_to_workspace_next: keys(&["Super+Shift+Down"]),
             workspace_modifiers: "Super".into(),
             move_to_workspace_modifiers: "Super+Shift".into(),
         }
@@ -144,6 +156,23 @@ impl Config {
         }
         if !(1..=9).contains(&config.workspaces) {
             return Err("workspaces must be between 1 and 9".into());
+        }
+        if config
+            .gaming_workspace
+            .is_some_and(|number| !(1..=config.workspaces).contains(&number))
+        {
+            return Err(format!(
+                "gaming_workspace must be between 1 and {}",
+                config.workspaces
+            )
+            .into());
+        }
+        if config
+            .game_app_id_prefixes
+            .iter()
+            .any(|prefix| prefix.trim().is_empty())
+        {
+            return Err("game_app_id_prefixes must not contain empty values".into());
         }
         if config
             .terminal
@@ -241,6 +270,19 @@ impl Config {
             (&self.bindings.focus_right, Action::Focus(1)),
             (&self.bindings.move_left, Action::Move(-1)),
             (&self.bindings.move_right, Action::Move(1)),
+            (
+                &self.bindings.workspace_previous,
+                Action::WorkspaceRelative(-1),
+            ),
+            (&self.bindings.workspace_next, Action::WorkspaceRelative(1)),
+            (
+                &self.bindings.move_to_workspace_previous,
+                Action::MoveToWorkspaceRelative(-1),
+            ),
+            (
+                &self.bindings.move_to_workspace_next,
+                Action::MoveToWorkspaceRelative(1),
+            ),
         ] {
             for key in keys {
                 add(key, action)?;
@@ -276,6 +318,8 @@ impl Config {
         self.bindings = new.bindings;
         self.appearance = new.appearance;
         self.float_dialogs = new.float_dialogs;
+        self.gaming_workspace = new.gaming_workspace;
+        self.game_app_id_prefixes = new.game_app_id_prefixes;
         self.rules = new.rules;
     }
 }
@@ -348,12 +392,12 @@ mod tests {
     fn defaults_and_partial_configuration() {
         let defaults = Config::parse("").unwrap();
         assert_eq!(defaults.workspaces, 9);
-        assert_eq!(defaults.keybindings().unwrap().len(), 34);
+        assert_eq!(defaults.keybindings().unwrap().len(), 40);
         assert!(defaults.autostart.is_empty());
         assert!(defaults.program_bindings.is_empty());
         let config =
             Config::parse("workspaces = 3\nterminal = ['kitty', '--single-instance']").unwrap();
-        assert_eq!(config.keybindings().unwrap().len(), 22);
+        assert_eq!(config.keybindings().unwrap().len(), 28);
         assert_eq!(config.terminal[1], "--single-instance");
         Config::parse(include_str!("../config/mywm.toml")).unwrap();
     }
@@ -380,6 +424,8 @@ mod tests {
             "[program_bindings.browser]\nkeys = []\ncommand = ['firefox']",
             "[program_bindings.browser]\nkeys = ['Super+b']\ncommand = []",
             "[program_bindings.browser]\nkeys = ['Super+q']\ncommand = ['firefox']",
+            "gaming_workspace = 10",
+            "game_app_id_prefixes = ['']",
         ] {
             assert!(Config::parse(text).is_err(), "accepted {text}");
         }
@@ -402,7 +448,7 @@ mod tests {
             "[program_bindings.browser]\nkeys = ['Super+b', 'Super+Shift+b']\ncommand = ['firefox', '--private-window']",
         )
         .unwrap();
-        assert_eq!(config.keybindings().unwrap().len(), 36);
+        assert_eq!(config.keybindings().unwrap().len(), 42);
         let binding = config.program_bindings.get("browser").unwrap();
         assert_eq!(binding.command, ["firefox", "--private-window"]);
     }

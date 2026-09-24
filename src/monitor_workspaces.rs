@@ -91,12 +91,27 @@ pub fn reconcile(state: &mut State) {
 }
 
 pub fn move_window(state: &mut State, source: usize, workspace: usize) {
-    let target = owner(state, workspace).unwrap_or(source);
     let Some(id) = state.focused_window.clone() else {
         return;
     };
+    move_window_id(state, source, workspace, id);
+}
+
+pub fn move_window_id(
+    state: &mut State,
+    source: usize,
+    workspace: usize,
+    id: wayland_client::backend::ObjectId,
+) {
+    let target = owner(state, workspace).unwrap_or(source);
     if source == target {
-        state.outputs[source].workspaces.move_focused_to(workspace);
+        let current = state.outputs[source].workspaces.location(&id);
+        if current != Some(workspace) {
+            state.outputs[source].workspaces.remove(&id);
+            state.outputs[source]
+                .workspaces
+                .add_to(workspace, id.clone());
+        }
     } else {
         state.outputs[source].workspaces.remove(&id);
         state.outputs[target]
