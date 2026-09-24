@@ -111,6 +111,13 @@ In `[bindings]` lässt sich `toggle_floating = ["Super+v"]` ändern.
 `pointer_modifiers = "Super"` legt die Modifier für beide Mausaktionen fest.
 Dialogfenster mit einem Elternfenster starten standardmäßig auf Floating; Rules können dies überschreiben.
 
+mywm setzt über Rivers Libinput-Protokoll für Zeigegeräte mit Unterstützung
+das Beschleunigungsprofil `flat` und die Geschwindigkeit `0` (neutral).
+Das gilt auch nach erneutem Anschließen. Bewegungen werden dadurch nicht
+abhängig von ihrer Geschwindigkeit beschleunigt; die Hardware-DPI bleiben wirksam.
+Ohne Libinput-Protokoll (etwa bei verschachteltem River) gelten die Einstellungen
+des äußeren Compositors.
+
 ## Workspaces und TOML-Konfiguration
 
 Jeder Monitor zeigt unabhängig einen Workspace an. Beim Wechsel wird dessen
@@ -144,6 +151,11 @@ Beispiel für die globale Monitorzuordnung und zusätzliche Terminalargumente:
 ```toml
 workspaces = 9
 terminal = ["kitty", "--single-instance"]
+autostart = [["firefox"], ["vesktop", "--start-minimized"]]
+
+[program_bindings.browser]
+keys = ["Super+b", "Super+Shift+b"]
+command = ["firefox"]
 
 [workspace_outputs]
 DP-3 = [1, 2, 3]
@@ -168,6 +180,14 @@ verwenden `Super`, `Shift`, `Ctrl`/`Control` und `Alt`, kombiniert mit Buchstabe
 für Shift muss ausdrücklich `Shift` angegeben werden. Leere Listen deaktivieren
 eine Aktion. Workspace-Kürzel werden automatisch aus den Modifiern und den
 Ziffern 1 bis zur konfigurierten Anzahl gebildet.
+
+`autostart` startet jeden aufgeführten Befehl einmal pro Sitzung, nachdem die
+Wayland-, D-Bus- und Portal-Umgebung eingerichtet wurde. Unter
+`[program_bindings.<name>]` lassen sich beliebig benannte Programmaktionen mit
+einer oder mehreren Tasten definieren. `command` und die Einträge in `autostart`
+enthalten das Programm gefolgt von seinen Argumenten; eine Shell wird nicht
+ausgewertet. Für Shell-Funktionen muss sie ausdrücklich angegeben werden, zum
+Beispiel `command = ["sh", "-lc", "..."]`.
 
 Unbekannte Optionen, doppelte Tastenkürzel und ungültige Werte brechen den Start
 mit einer Fehlermeldung ab. Terminalargumente werden direkt übergeben, ohne
@@ -289,7 +309,9 @@ Xwayland ist aktiviert, damit unter anderem Steam verwendet werden kann.
 Native Wayland-Anwendungen laufen weiterhin direkt unter Wayland. Für einen
 Test ohne Xwayland kann River mit `-no-xwayland` gestartet werden.
 
-Das Startskript startet Kanshi, mywm, swayidle, Quickshell-Bar und Wallpaper gemeinsam.
+Das Startskript startet Kanshi, mywm, swayidle, konfigurierte Autostart-Programme,
+Quickshell-Bar und Wallpaper gemeinsam. Autostart-Programme werden nach dem
+Einrichten der Sitzungsumgebung gestartet.
 Endet Kanshi, mywm oder swayidle, werden die übrigen Prozesse beendet. Ein Fehler der Bar beendet
 dagegen nicht die Fensterverwaltung. Rivers Beenden räumt alle Prozesse auf. Es prüft
 zuvor, ob Binary und Konfiguration vorhanden sind. Bei einem Umzug des Projekts

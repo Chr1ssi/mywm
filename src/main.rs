@@ -6,6 +6,7 @@ mod ipc;
 mod keyboard;
 mod layer_shell;
 mod monitor_workspaces;
+mod pointer;
 mod river;
 mod rules;
 mod scrolling;
@@ -113,6 +114,7 @@ enum Action {
     ToggleFloating,
     Workspace(usize),
     MoveToWorkspace(usize),
+    Program(usize),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -492,6 +494,11 @@ fn run_actions(state: &mut State, manager: &RiverWindowManagerV1) {
                     Err(error) => eprintln!("Cannot start launcher: {error}"),
                 }
             }
+            Action::Program(index) => {
+                if let Some(binding) = state.config.program_bindings.values().nth(index) {
+                    spawn_command(&binding.command, "program binding");
+                }
+            }
             Action::WorkspaceOnOutput(id, target) => {
                 if let Some(output) = state
                     .outputs
@@ -569,6 +576,26 @@ fn run_actions(state: &mut State, manager: &RiverWindowManagerV1) {
                 }
             }
         }
+    }
+}
+
+fn spawn_command(command: &[String], context: &str) {
+    match std::process::Command::new(&command[0])
+        .args(&command[1..])
+        .spawn()
+    {
+        Ok(mut child) => {
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+        Err(error) => eprintln!("Cannot start {context} '{}': {error}", command[0]),
+    }
+}
+
+fn run_autostart(config: &Config) {
+    for command in &config.autostart {
+        spawn_command(command, "autostart command");
     }
 }
 
@@ -705,6 +732,11 @@ impl Dispatch<wl_registry::WlRegistry, ()> for State {
         } = event
         {
             keyboard::bind(state, registry, name, &interface, version, qh);
+            if interface == "river_libinput_config_v1" {
+                registry.bind::<river::river_libinput_config::river_libinput_config_v1::RiverLibinputConfigV1, _, _>(
+                    name, version.min(2), qh, (),
+                );
+            }
             if interface == "wl_output" {
                 let output = registry.bind::<wayland_client::protocol::wl_output::WlOutput, _, _>(
                     name,
@@ -1276,6 +1308,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("--wallpaper") => return wallpaper::run(&config),
         Some("--lock") => return session::lock_and_wait(),
         Some("--idle") => return session::idle(&config.idle),
+        Some("--autostart") => {
+            run_autostart(&config);
+            return Ok(());
+        }
         _ => {}
     }
     if std::env::args().nth(1).as_deref() == Some("--bar") {

@@ -86,3 +86,18 @@ pub mod river_xkb_config {
         "/usr/share/river-protocols/stable/river-xkb-config-v1.xml"
     );
 }
+
+pub mod river_libinput_config {
+    use wayland_client;
+    pub mod __interfaces {
+        use super::super::river_input_management::__interfaces::*;
+        wayland_scanner::generate_interfaces!(
+            "/usr/share/river-protocols/stable/river-libinput-config-v1.xml"
+        );
+    }
+    use self::__interfaces::*;
+    use super::river_input_management::river_input_device_v1;
+    wayland_scanner::generate_client_code!(
+        "/usr/share/river-protocols/stable/river-libinput-config-v1.xml"
+    );
+}

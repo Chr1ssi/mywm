@@ -87,9 +87,10 @@ class RiverPeer:
             nonlocal offset
             value = struct.unpack_from("=i" if kind == "int" else "=I", payload, offset)[0]
             offset += 4
-            if kind == "string":
+            if kind in ("string", "array"):
                 length = value
-                value = payload[offset:offset + length - 1].decode()
+                value = (payload[offset:offset + length - 1].decode() if kind == "string"
+                         else payload[offset:offset + length])
                 offset += (length + 3) & ~3
             return value
 

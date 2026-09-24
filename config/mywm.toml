@@ -6,6 +6,12 @@ float_dialogs = true
 terminal = ["kitty"]
 wallpaper_directory = "/home/chris/Bilder/Wallpaper"
 
+# Programme und Argumente jeweils als eigene Liste; ohne Shell-Auswertung.
+# autostart = [
+#     ["firefox"],
+#     ["vesktop", "--start-minimized"],
+# ]
+
 [workspace_outputs]
 DP-3 = [1, 2, 3]
 HDMI-A-1 = [4, 5, 6]
@@ -50,6 +56,11 @@ move_right = ["Super+Shift+l", "Super+Shift+Right"]
 # Zusammen mit den Ziffern 1 bis workspaces.
 workspace_modifiers = "Super"
 move_to_workspace_modifiers = "Super+Shift"
+
+# Frei benannte Kürzel zum Starten beliebiger Programme.
+# [program_bindings.browser]
+# keys = ["Super+b"]
+# command = ["firefox"]
 
 # Regeln gelten beim ersten Einordnen eines Fensters, nicht bei späteren Änderungen.
 # App-IDs werden beim Start einer Anwendung im mywm-Log ausgegeben.

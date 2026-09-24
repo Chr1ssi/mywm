@@ -1,6 +1,9 @@
 use crate::{Action, river::river_window_management::river_seat_v1::Modifiers};
 use serde::Deserialize;
-use std::{collections::HashSet, path::PathBuf};
+use std::{
+    collections::{BTreeMap, HashSet},
+    path::PathBuf,
+};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -14,6 +17,8 @@ pub struct Config {
     pub workspaces: usize,
     pub terminal: Vec<String>,
     pub launcher: Vec<String>,
+    pub autostart: Vec<Vec<String>>,
+    pub program_bindings: BTreeMap<String, ProgramBinding>,
     pub bindings: Bindings,
     pub appearance: crate::appearance::Appearance,
     pub float_dialogs: bool,
@@ -31,6 +36,8 @@ impl Default for Config {
             keyboard: crate::keyboard::KeyboardConfig::default(),
             workspaces: 9,
             terminal: vec!["kitty".into()],
+            autostart: Vec::new(),
+            program_bindings: BTreeMap::new(),
             launcher: vec![
                 "qs".into(),
                 "--path".into(),
@@ -45,6 +52,13 @@ impl Default for Config {
             rules: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProgramBinding {
+    pub keys: Vec<String>,
+    pub command: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -143,6 +157,21 @@ impl Config {
         {
             return Err("launcher must contain a program".into());
         }
+        for (index, command) in config.autostart.iter().enumerate() {
+            validate_command(command, &format!("autostart[{}]", index + 1))?;
+        }
+        for (name, binding) in &config.program_bindings {
+            if name.trim().is_empty() {
+                return Err("program_bindings names must not be empty".into());
+            }
+            if binding.keys.is_empty() {
+                return Err(format!("program_bindings.{name}.keys must not be empty").into());
+            }
+            validate_command(
+                &binding.command,
+                &format!("program_bindings.{name}.command"),
+            )?;
+        }
         for (index, rule) in config.rules.iter().enumerate() {
             rule.validate(config.workspaces)
                 .map_err(|error| format!("rules[{}]: {error}", index + 1))?;
@@ -228,8 +257,23 @@ impl Config {
                 Action::MoveToWorkspace(workspace),
             )?;
         }
+        for (index, binding) in self.program_bindings.values().enumerate() {
+            for key in &binding.keys {
+                add(key, Action::Program(index))?;
+            }
+        }
         Ok(bindings)
     }
+}
+
+fn validate_command(command: &[String], name: &str) -> Result<()> {
+    if command
+        .first()
+        .is_none_or(|program| program.trim().is_empty())
+    {
+        return Err(format!("{name} must contain a program").into());
+    }
+    Ok(())
 }
 
 fn parse_key(key: &str) -> Result<(u32, Modifiers)> {
@@ -291,6 +335,8 @@ mod tests {
         let defaults = Config::parse("").unwrap();
         assert_eq!(defaults.workspaces, 9);
         assert_eq!(defaults.keybindings().unwrap().len(), 33);
+        assert!(defaults.autostart.is_empty());
+        assert!(defaults.program_bindings.is_empty());
         let config =
             Config::parse("workspaces = 3\nterminal = ['kitty', '--single-instance']").unwrap();
         assert_eq!(config.keybindings().unwrap().len(), 21);
@@ -315,6 +361,11 @@ mod tests {
             "[bindings]\nexit = ['Super+Super+m']",
             "workspaces =",
             "[bindings]\npointer_modifiers = 'Bogus'",
+            "autostart = [[]]",
+            "autostart = [['']]",
+            "[program_bindings.browser]\nkeys = []\ncommand = ['firefox']",
+            "[program_bindings.browser]\nkeys = ['Super+b']\ncommand = []",
+            "[program_bindings.browser]\nkeys = ['Super+q']\ncommand = ['firefox']",
         ] {
             assert!(Config::parse(text).is_err(), "accepted {text}");
         }
@@ -329,5 +380,16 @@ mod tests {
         let (_, modifiers) = parse_key("Super+Shift+2").unwrap();
         assert_eq!(modifiers, Modifiers::Mod4 | Modifiers::Shift);
         assert_eq!(parse_key("Ctrl+Alt+h").unwrap().0, 0x68);
+    }
+
+    #[test]
+    fn program_bindings_add_commands_and_detect_duplicates() {
+        let config = Config::parse(
+            "[program_bindings.browser]\nkeys = ['Super+b', 'Super+Shift+b']\ncommand = ['firefox', '--private-window']",
+        )
+        .unwrap();
+        assert_eq!(config.keybindings().unwrap().len(), 35);
+        let binding = config.program_bindings.get("browser").unwrap();
+        assert_eq!(binding.command, ["firefox", "--private-window"]);
     }
 }
