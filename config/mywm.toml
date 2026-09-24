@@ -73,7 +73,7 @@ move_to_workspace_modifiers = "Super+Shift"
 # Frei benannte Kürzel zum Starten beliebiger Programme.
 [program_bindings.browser]
 keys = ["Super+b"]
-command = ["firefox"]
+command = ["helium"]
 
 [program_bindings.file_manager]
 keys = ["Super+e"]
