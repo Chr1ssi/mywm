@@ -58,9 +58,13 @@ workspace_modifiers = "Super"
 move_to_workspace_modifiers = "Super+Shift"
 
 # Frei benannte Kürzel zum Starten beliebiger Programme.
-# [program_bindings.browser]
-# keys = ["Super+b"]
-# command = ["firefox"]
+[program_bindings.browser]
+keys = ["Super+b"]
+command = ["firefox"]
+
+[program_bindings.file_manager]
+keys = ["Super+e"]
+command = ["thunar"]
 
 # Regeln gelten beim ersten Einordnen eines Fensters, nicht bei späteren Änderungen.
 # App-IDs werden beim Start einer Anwendung im mywm-Log ausgegeben.
