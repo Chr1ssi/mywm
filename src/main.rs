@@ -1487,7 +1487,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match std::env::args().nth(1).as_deref() {
         Some("--wallpaper-list") => return wallpaper::list(&config),
         Some("--wallpaper") => return wallpaper::run(&config),
-        Some("--lock") => return session::lock_and_wait(),
+        Some("--wallpaper-picker") => {
+            let status = wallpaper::picker(0, 0).status()?;
+            return status
+                .success()
+                .then_some(())
+                .ok_or_else(|| "wallpaper picker exited unsuccessfully".into());
+        }
+        Some("--launcher") => {
+            use std::os::unix::process::CommandExt;
+            let mut command = std::process::Command::new(&config.launcher[0]);
+            command.args(&config.launcher[1..]);
+            config.apply_theme(&mut command);
+            command.env("MYWM_TERMINAL_COUNT", config.terminal.len().to_string());
+            for (index, argument) in config.terminal.iter().enumerate() {
+                command.env(format!("MYWM_TERMINAL_{index}"), argument);
+            }
+            return Err(command.exec().into());
+        }
+        Some("--lock") => return session::lock_and_wait(&config),
         Some("--idle") => return session::idle(&config.idle),
         Some("--autostart") => {
             run_autostart(&config);

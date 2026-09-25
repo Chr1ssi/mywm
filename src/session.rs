@@ -94,10 +94,15 @@ pub fn start_lock(config: &Config, child: &mut Option<Child>, locked: bool) {
     }
 }
 
-/// Exit successfully only after River acknowledges the actual session lock.
-pub fn lock_and_wait() -> Result<()> {
-    let path = std::env::var_os("MYWM_SOCKET")
-        .ok_or("MYWM_SOCKET is not set; start River with scripts/river-init")?;
+/// River confirms its lock state over IPC; other compositors run swaylock directly.
+pub fn lock_and_wait(config: &Config) -> Result<()> {
+    let Some(path) = std::env::var_os("MYWM_SOCKET") else {
+        let status = locker(config).status()?;
+        return status
+            .success()
+            .then_some(())
+            .ok_or_else(|| "swaylock exited unsuccessfully".into());
+    };
     let mut socket = UnixStream::connect(path)?;
     socket.set_write_timeout(Some(Duration::from_secs(2)))?;
     socket.write_all(b"v1 lock\n")?;
