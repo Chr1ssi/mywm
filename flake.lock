@@ -1,13 +1,17 @@
 {
   "nodes": {
     "mywm-shell": {
-      "flake": false,
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
       "locked": {
-        "lastModified": 1790275563,
-        "narHash": "sha256-wyTLlNThJdKx2AGjXs+Yd66BPrYhaqPTLtMMPvO4XTA=",
+        "lastModified": 1790366102,
+        "narHash": "sha256-wdkOpnyJMapzPBYxUk8nIVUGlHxnx+ySZLnU0xRlhgw=",
         "owner": "Chr1ssi",
         "repo": "mywm-shell",
-        "rev": "f591e195be321794da4e1e34b118b3db3d141e30",
+        "rev": "b139646bc1e236f855b543839694516ebb98a20b",
         "type": "github"
       },
       "original": {
