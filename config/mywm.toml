@@ -18,12 +18,6 @@ enabled = false
 output = "DP-3"
 command = ["wlr-randr"]
 
-# Programme und Argumente jeweils als eigene Liste; ohne Shell-Auswertung.
-# autostart = [
-#     ["firefox"],
-#     ["vesktop", "--start-minimized"],
-# ]
-
 [workspace_outputs]
 DP-3 = [1, 2, 3]
 HDMI-A-1 = [4, 5, 6]

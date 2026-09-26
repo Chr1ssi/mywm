@@ -68,7 +68,6 @@ fi
 if ! "$session_environment"; then
     echo 'Warnung: Portal-Umgebung konnte nicht vollständig eingerichtet werden.' >&2
 fi
-"$wm_binary" --autostart
 "$wm_binary" --wallpaper &
 children+=("$!")
 "$wm_binary" --bar &

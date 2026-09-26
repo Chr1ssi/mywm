@@ -727,12 +727,6 @@ fn spawn_command(command: &[String], context: &str) {
     }
 }
 
-fn run_autostart(config: &Config) {
-    for command in &config.autostart {
-        spawn_command(command, "autostart command");
-    }
-}
-
 fn reload_config(state: &mut State, qh: &QueueHandle<State>) {
     let new = match Config::load() {
         Ok(config) => config,
@@ -1511,10 +1505,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some("--lock") => return session::lock_and_wait(&config),
         Some("--idle") => return session::idle(&config.idle),
-        Some("--autostart") => {
-            run_autostart(&config);
-            return Ok(());
-        }
         _ => {}
     }
     if std::env::args().nth(1).as_deref() == Some("--bar") {

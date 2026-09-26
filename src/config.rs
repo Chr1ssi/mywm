@@ -17,7 +17,6 @@ pub struct Config {
     pub workspaces: usize,
     pub terminal: Vec<String>,
     pub launcher: Vec<String>,
-    pub autostart: Vec<Vec<String>>,
     pub program_bindings: BTreeMap<String, ProgramBinding>,
     pub bindings: Bindings,
     pub appearance: crate::appearance::Appearance,
@@ -39,7 +38,6 @@ impl Default for Config {
             keyboard: crate::keyboard::KeyboardConfig::default(),
             workspaces: 9,
             terminal: vec!["kitty".into()],
-            autostart: Vec::new(),
             program_bindings: BTreeMap::new(),
             launcher: vec![
                 "qs".into(),
@@ -190,9 +188,6 @@ impl Config {
             .is_none_or(|program| program.trim().is_empty())
         {
             return Err("launcher must contain a program".into());
-        }
-        for (index, command) in config.autostart.iter().enumerate() {
-            validate_command(command, &format!("autostart[{}]", index + 1))?;
         }
         for (name, binding) in &config.program_bindings {
             if name.trim().is_empty() {
@@ -397,7 +392,6 @@ mod tests {
         let defaults = Config::parse("").unwrap();
         assert_eq!(defaults.workspaces, 9);
         assert_eq!(defaults.keybindings().unwrap().len(), 40);
-        assert!(defaults.autostart.is_empty());
         assert!(defaults.program_bindings.is_empty());
         let config =
             Config::parse("workspaces = 3\nterminal = ['kitty', '--single-instance']").unwrap();
@@ -423,8 +417,6 @@ mod tests {
             "[bindings]\nexit = ['Super+Super+m']",
             "workspaces =",
             "[bindings]\npointer_modifiers = 'Bogus'",
-            "autostart = [[]]",
-            "autostart = [['']]",
             "[program_bindings.browser]\nkeys = []\ncommand = ['firefox']",
             "[program_bindings.browser]\nkeys = ['Super+b']\ncommand = []",
             "[program_bindings.browser]\nkeys = ['Super+q']\ncommand = ['firefox']",
