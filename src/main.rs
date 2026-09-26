@@ -101,6 +101,7 @@ struct State {
     layer_focus: LayerFocus,
     layer_focus_granted: bool,
     vrr_enabled: Option<bool>,
+    vrr_sender: Option<std::sync::mpsc::Sender<bool>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -744,6 +745,7 @@ fn reload_config(state: &mut State, qh: &QueueHandle<State>) {
         binding.destroy();
     }
     state.config.apply_reloadable(new);
+    state.vrr_sender = vrr::worker(&state.config.vrr);
     install_bindings(state, qh);
     state.focus_dirty = true;
     eprintln!("Configuration reloaded");
@@ -1519,6 +1521,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let mut ipc = ipc::Server::new()?;
     let keyboard = keyboard::KeyboardState::new(&config.keyboard)?;
+    let vrr_sender = vrr::worker(&config.vrr);
     let conn = Connection::connect_to_env()?;
     println!("connected to Wayland");
 
@@ -1558,6 +1561,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         layer_focus: LayerFocus::None,
         layer_focus_granted: false,
         vrr_enabled: None,
+        vrr_sender,
     };
 
     event_queue.roundtrip(&mut state)?;

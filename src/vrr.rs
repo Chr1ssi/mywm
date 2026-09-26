@@ -61,31 +61,46 @@ fn desired(state: &State) -> bool {
     })
 }
 
+pub fn worker(config: &VrrConfig) -> Option<std::sync::mpsc::Sender<bool>> {
+    if !config.enabled {
+        return None;
+    }
+    let command = config.command.clone();
+    let output = config.output.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        while let Ok(enabled) = receiver.recv() {
+            let status = std::process::Command::new(&command[0])
+                .args(&command[1..])
+                .args([
+                    "--output",
+                    &output,
+                    "--adaptive-sync",
+                    if enabled { "enabled" } else { "disabled" },
+                ])
+                .status();
+            match status {
+                Ok(status) if status.success() => eprintln!(
+                    "VRR {} on {output}",
+                    if enabled { "enabled" } else { "disabled" }
+                ),
+                Ok(status) => eprintln!("Cannot change VRR on {output}: {status}"),
+                Err(error) => eprintln!("Cannot start VRR command '{}': {error}", command[0]),
+            }
+        }
+    });
+    Some(sender)
+}
+
 fn set(state: &mut State, enabled: bool) {
-    let config = &state.config.vrr;
-    let Some(program) = config.command.first() else {
+    let Some(sender) = &state.vrr_sender else {
         return;
     };
-    let status = std::process::Command::new(program)
-        .args(&config.command[1..])
-        .args([
-            "--output",
-            &config.output,
-            "--adaptive-sync",
-            if enabled { "enabled" } else { "disabled" },
-        ])
-        .status();
-    match status {
-        Ok(status) if status.success() => {
-            state.vrr_enabled = Some(enabled);
-            eprintln!(
-                "VRR {} on {}",
-                if enabled { "enabled" } else { "disabled" },
-                config.output
-            );
-        }
-        Ok(status) => eprintln!("Cannot change VRR on {}: {status}", config.output),
-        Err(error) => eprintln!("Cannot start VRR command '{program}': {error}"),
+    if sender.send(enabled).is_ok() {
+        state.vrr_enabled = Some(enabled);
+    } else {
+        eprintln!("VRR worker stopped unexpectedly");
+        state.vrr_sender = None;
     }
 }
 
