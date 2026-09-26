@@ -1119,6 +1119,11 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                                 a,
                             );
                             window.river_window.show();
+                            if window.river_window.version() >= 3 {
+                                window
+                                    .river_window
+                                    .set_content_clip_box(0, 0, width, height);
+                            }
                             if window.river_window.version() >= 2 {
                                 window.river_window.set_clip_box(
                                     left - x,
