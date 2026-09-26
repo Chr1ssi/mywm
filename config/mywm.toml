@@ -11,6 +11,13 @@ game_app_id_prefixes = ["steam_app_", "gamescope"]
 terminal = ["kitty"]
 wallpaper_directory = "/home/chris/Bilder/Wallpaper"
 
+# Optional: adaptive sync remains off except while a recognized game is visibly
+# fullscreen on this output. command receives wlr-randr-compatible arguments.
+[vrr]
+enabled = false
+output = "DP-3"
+command = ["wlr-randr"]
+
 # Programme und Argumente jeweils als eigene Liste; ohne Shell-Auswertung.
 # autostart = [
 #     ["firefox"],

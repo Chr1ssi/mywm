@@ -12,6 +12,7 @@ mod rules;
 mod scrolling;
 mod session;
 mod shell;
+mod vrr;
 mod wallpaper;
 mod workspaces;
 
@@ -99,6 +100,7 @@ struct State {
     layer_seat: Option<RiverLayerShellSeatV1>,
     layer_focus: LayerFocus,
     layer_focus_granted: bool,
+    vrr_enabled: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -740,6 +742,7 @@ fn reload_config(state: &mut State, qh: &QueueHandle<State>) {
         }
     };
 
+    vrr::disable(state);
     for binding in state.bindings.drain(..) {
         binding.destroy();
     }
@@ -1009,6 +1012,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                 update_drag(state);
                 layout(state);
                 fullscreen::apply(state);
+                vrr::apply(state);
                 for window in &mut state.windows {
                     // The WM supplies focus borders, but no title bar.
                     window.river_window.use_ssd();
@@ -1563,6 +1567,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         layer_seat: None,
         layer_focus: LayerFocus::None,
         layer_focus_granted: false,
+        vrr_enabled: None,
     };
 
     event_queue.roundtrip(&mut state)?;

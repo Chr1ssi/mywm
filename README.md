@@ -141,6 +141,11 @@ terminal = ["kitty"]
 wallpaper_directory = "/home/user/Pictures/Wallpapers"
 float_dialogs = true
 
+[vrr]
+enabled = true
+output = "DP-3"
+command = ["wlr-randr"]
+
 [workspace_outputs]
 DP-1 = [1, 2, 3]
 HDMI-A-1 = [4, 5, 6]
@@ -166,6 +171,13 @@ launcher = ["Super+Space"]
 `workspace_outputs` ist optional. Wenn es gesetzt ist, muss jede Workspace-
 Nummer genau einmal einem Ausgang zugeordnet sein. Ohne die Tabelle stehen die
 Workspaces auf jedem Monitor unabhängig zur Verfügung.
+
+`vrr` ist optional und standardmäßig deaktiviert. Wenn aktiviert, schaltet mywm
+Adaptive Sync ausschließlich für ein sichtbares Vollbildfenster ein, dessen
+App-ID mit `game_app_id_prefixes` übereinstimmt. Beim Verlassen des Vollbilds,
+Workspace-Wechsel, Sperren der Sitzung oder Schließen des Spiels wird es wieder
+deaktiviert. `command` muss die Argumente von `wlr-randr` verstehen; mywm hängt
+`--output … --adaptive-sync enabled|disabled` an.
 
 Die mitgelieferte Kanshi-Datei unter `config/kanshi.conf` enthält eine
 rechnerspezifische Monitoranordnung und sollte für das eigene System ersetzt

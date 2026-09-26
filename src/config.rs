@@ -24,6 +24,7 @@ pub struct Config {
     pub float_dialogs: bool,
     pub gaming_workspace: Option<usize>,
     pub game_app_id_prefixes: Vec<String>,
+    pub vrr: crate::vrr::VrrConfig,
     pub rules: Vec<crate::rules::Rule>,
 }
 
@@ -53,6 +54,7 @@ impl Default for Config {
             float_dialogs: true,
             gaming_workspace: None,
             game_app_id_prefixes: Vec::new(),
+            vrr: crate::vrr::VrrConfig::default(),
             rules: Vec::new(),
         }
     }
@@ -174,6 +176,7 @@ impl Config {
         {
             return Err("game_app_id_prefixes must not contain empty values".into());
         }
+        config.vrr.validate()?;
         if config
             .terminal
             .first()
@@ -320,6 +323,7 @@ impl Config {
         self.float_dialogs = new.float_dialogs;
         self.gaming_workspace = new.gaming_workspace;
         self.game_app_id_prefixes = new.game_app_id_prefixes;
+        self.vrr = new.vrr;
         self.rules = new.rules;
     }
 }
@@ -426,6 +430,9 @@ mod tests {
             "[program_bindings.browser]\nkeys = ['Super+q']\ncommand = ['firefox']",
             "gaming_workspace = 10",
             "game_app_id_prefixes = ['']",
+            "[vrr]\nenabled = true",
+            "[vrr]\nenabled = true\noutput = ''",
+            "[vrr]\nenabled = true\noutput = 'DP-3'\ncommand = []",
         ] {
             assert!(Config::parse(text).is_err(), "accepted {text}");
         }
