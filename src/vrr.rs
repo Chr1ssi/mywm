@@ -120,7 +120,7 @@ pub fn apply(state: &mut State) {
     if state.config.vrr.enabled && !output_connected(state) {
         return;
     }
-    if !state.config.vrr.enabled && state.vrr_enabled.is_none() {
+    if state.vrr_enabled.is_none() && !enabled {
         state.vrr_enabled = Some(false);
         return;
     }
