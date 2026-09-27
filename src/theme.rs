@@ -44,6 +44,7 @@ const KITTY: &str = include_str!("../assets/themes/kitty.conf");
 const GTK3: &str = include_str!("../assets/themes/gtk3.css");
 const GTK4: &str = include_str!("../assets/themes/gtk4.css");
 const NVIM: &str = include_str!("../assets/themes/nvim.lua");
+const VESKTOP: &str = include_str!("../assets/themes/vesktop.css");
 
 pub fn state_path() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("MYWM_THEME_STATE").filter(|p| !p.is_empty()) {
@@ -77,6 +78,7 @@ pub fn apply(wallpaper: &Path) -> Result<()> {
     render(directory.join("gtk-3.css"), GTK3, &state)?;
     render(directory.join("gtk-4.css"), GTK4, &state)?;
     render(directory.join("nvim.lua"), NVIM, &state)?;
+    render(directory.join("vesktop.css"), VESKTOP, &state)?;
     notify_consumers(directory);
     println!("Theme generated from {}", wallpaper.display());
     Ok(())
