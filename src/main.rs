@@ -43,6 +43,9 @@ struct Window {
     river_window: RiverWindowV1,
     node: Option<RiverNodeV1>,
     geometry: Option<(i32, i32, i32, i32)>,
+    actual_dimensions: Option<(i32, i32)>,
+    proposed_dimensions: Option<(i32, i32)>,
+    proposal_retried: bool,
     output: Option<usize>,
     floating: bool,
     fullscreen: bool,
@@ -937,6 +940,9 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     river_window: id,
                     node: None,
                     geometry: None,
+                    actual_dimensions: None,
+                    proposed_dimensions: None,
+                    proposal_retried: false,
                     output: None,
                     floating: false,
                     fullscreen: false,
@@ -1026,6 +1032,11 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                         } else {
                             Edges::Top | Edges::Bottom | Edges::Left | Edges::Right
                         });
+                        let proposal = (width, height);
+                        if window.proposed_dimensions != Some(proposal) {
+                            window.proposal_retried = false;
+                        }
+                        window.proposed_dimensions = Some(proposal);
                         window.river_window.propose_dimensions(width, height);
                     }
                 }
@@ -1069,6 +1080,20 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
             }
 
             river::river_window_management::river_window_manager_v1::Event::RenderStart => {
+                let mut retry_layout = false;
+                for window in &mut state.windows {
+                    if window.fullscreen_output.is_none()
+                        && window.actual_dimensions.is_some()
+                        && window.actual_dimensions != window.proposed_dimensions
+                        && !window.proposal_retried
+                    {
+                        window.proposal_retried = true;
+                        retry_layout = true;
+                    }
+                }
+                if retry_layout {
+                    manager.manage_dirty();
+                }
                 for window in state
                     .windows
                     .iter()
@@ -1180,6 +1205,11 @@ impl Dispatch<RiverWindowV1, ()> for State {
             Event::ExitFullscreenRequested => {
                 if let Some(item) = state.windows.iter_mut().find(|w| w.river_window == *window) {
                     item.fullscreen = false;
+                }
+            }
+            Event::Dimensions { width, height } => {
+                if let Some(item) = state.windows.iter_mut().find(|w| w.river_window == *window) {
+                    item.actual_dimensions = Some((width, height));
                 }
             }
             Event::AppId { app_id } => {
