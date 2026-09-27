@@ -12,6 +12,7 @@ mod rules;
 mod scrolling;
 mod session;
 mod shell;
+mod theme;
 mod vrr;
 mod wallpaper;
 mod workspaces;
@@ -1540,6 +1541,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load()?;
 
     match std::env::args().nth(1).as_deref() {
+        Some("--theme-from-wallpaper") => {
+            let wallpaper = std::env::args()
+                .nth(2)
+                .ok_or("--theme-from-wallpaper requires an image path")?;
+            return theme::apply(std::path::Path::new(&wallpaper));
+        }
         Some("--wallpaper-list") => return wallpaper::list(&config),
         Some("--wallpaper") => return wallpaper::run(&config),
         Some("--wallpaper-picker") => {

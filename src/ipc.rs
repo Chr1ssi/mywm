@@ -131,6 +131,7 @@ fn parse(line: &str, state: &State) -> Option<Action> {
     match args.as_slice() {
         ["v1", "lock"] => Some(Action::Lock),
         ["v1", "logout"] => Some(Action::Exit),
+        ["v1", "theme-reload"] => Some(Action::Reload),
         ["v1", "workspace", output, workspace] => {
             let output = output.parse::<u32>().ok()?;
             let workspace = workspace.parse::<usize>().ok()?.checked_sub(1)?;

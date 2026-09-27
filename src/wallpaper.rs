@@ -15,6 +15,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         .arg(crate::shell::qml("wallpaper.qml"))
         .arg("--no-duplicate")
         .env("MYWM_WALLPAPER_HELPER", std::env::current_exe()?)
+        .env("MYWM_THEME_HELPER", std::env::current_exe()?)
         .env("MYWM_WALLPAPER_DIRECTORY", &config.wallpaper_directory)
         .env("MYWM_WALLPAPER_STATE", state_dir.join("wallpaper.json"));
     config.apply_theme(&mut command);

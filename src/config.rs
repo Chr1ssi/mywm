@@ -129,6 +129,9 @@ impl Config {
         ] {
             command.env(format!("MYWM_COLOR_{name}"), color.css());
         }
+        if let Ok(path) = crate::theme::state_path() {
+            command.env("MYWM_THEME_STATE", path);
+        }
     }
 
     pub fn parse(text: &str) -> Result<Self> {
@@ -225,16 +228,22 @@ impl Config {
                 .map(|p| p.join("mywm/config.toml"))
         });
         let Some(path) = path else {
-            return Ok(Self::default());
+            let mut config = Self::default();
+            crate::theme::apply_to_appearance(&mut config.appearance);
+            return Ok(config);
         };
         match std::fs::read_to_string(&path) {
             Ok(text) => {
-                let config = Self::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+                let mut config =
+                    Self::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+                crate::theme::apply_to_appearance(&mut config.appearance);
                 eprintln!("Configuration: {}", path.display());
                 Ok(config)
             }
             Err(e) if explicit.is_none() && e.kind() == std::io::ErrorKind::NotFound => {
-                Ok(Self::default())
+                let mut config = Self::default();
+                crate::theme::apply_to_appearance(&mut config.appearance);
+                Ok(config)
             }
             Err(e) => Err(format!("{}: {e}", path.display()).into()),
         }
