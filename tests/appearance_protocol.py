@@ -23,8 +23,9 @@ def main():
         assert has(requests, "set_content_clip_box", first, x=0, y=0, width=1900, height=1060)
         assert has(requests, "set_clip_box", first, x=-2, y=-2, width=1904, height=1064)
         peer.event(first, "dimensions", 950, 530)
-        requests = peer.cycle()
-        assert has(requests, "manage_dirty"), "retry a client that initially took the wrong size"
+        peer.cycle()
+        requests = peer.until("manage_dirty")
+        assert has(requests, "manage_dirty"), "retry a restored size after the startup delay"
         requests = peer.cycle()
         assert not has(requests, "manage_dirty"), "do not loop when a client rejects the proposal"
         peer.event(peer.layer_outputs[output], "non_exclusive_area", 0, 40, 1920, 1040)

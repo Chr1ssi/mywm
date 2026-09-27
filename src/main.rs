@@ -105,6 +105,7 @@ struct State {
     layer_focus_granted: bool,
     vrr_enabled: Option<bool>,
     vrr_sender: Option<std::sync::mpsc::Sender<bool>>,
+    dimension_retry_at: Option<std::time::Instant>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -176,6 +177,33 @@ fn is_game_window(state: &State, id: &ObjectId) -> bool {
         current = window.parent.clone();
     }
     false
+}
+
+fn needs_dimension_retry(window: &Window) -> bool {
+    window.fullscreen_output.is_none()
+        && window.actual_dimensions.is_some()
+        && window.actual_dimensions != window.proposed_dimensions
+        && !window.proposal_retried
+}
+
+fn run_dimension_retry(state: &mut State) {
+    let Some(deadline) = state.dimension_retry_at else {
+        return;
+    };
+    if std::time::Instant::now() < deadline {
+        return;
+    }
+    state.dimension_retry_at = None;
+    let mut retry_layout = false;
+    for window in &mut state.windows {
+        if needs_dimension_retry(window) {
+            window.proposal_retried = true;
+            retry_layout = true;
+        }
+    }
+    if retry_layout && let Some(manager) = &state.manager {
+        manager.manage_dirty();
+    }
 }
 
 fn workspace_accepts(state: &State, workspace: usize, id: &ObjectId) -> bool {
@@ -1080,19 +1108,11 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
             }
 
             river::river_window_management::river_window_manager_v1::Event::RenderStart => {
-                let mut retry_layout = false;
-                for window in &mut state.windows {
-                    if window.fullscreen_output.is_none()
-                        && window.actual_dimensions.is_some()
-                        && window.actual_dimensions != window.proposed_dimensions
-                        && !window.proposal_retried
-                    {
-                        window.proposal_retried = true;
-                        retry_layout = true;
-                    }
-                }
-                if retry_layout {
-                    manager.manage_dirty();
+                if state.dimension_retry_at.is_none()
+                    && state.windows.iter().any(needs_dimension_retry)
+                {
+                    state.dimension_retry_at =
+                        Some(std::time::Instant::now() + std::time::Duration::from_millis(500));
                 }
                 for window in state
                     .windows
@@ -1597,6 +1617,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         layer_focus_granted: false,
         vrr_enabled: None,
         vrr_sender,
+        dimension_retry_at: None,
     };
 
     event_queue.roundtrip(&mut state)?;
@@ -1610,6 +1631,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(ipc) = &mut ipc {
                 ipc.update(&mut state);
             }
+            run_dimension_retry(&mut state);
             conn.flush()?;
             if let Some(guard) = event_queue.prepare_read() {
                 let mut fd = libc::pollfd {
@@ -1617,8 +1639,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     events: libc::POLLIN,
                     revents: 0,
                 };
-                // A bounded wait also services the nonblocking bar clients while River is idle.
-                let ready = unsafe { libc::poll(&mut fd, 1, if ipc.is_some() { 100 } else { -1 }) };
+                // A bounded wait services bar clients and scheduled layout retries while idle.
+                let ipc_timeout = ipc.as_ref().map(|_| 100);
+                let retry_timeout = state.dimension_retry_at.map(|at| {
+                    at.saturating_duration_since(std::time::Instant::now())
+                        .as_millis()
+                        .min(i32::MAX as u128) as i32
+                });
+                let timeout = match (ipc_timeout, retry_timeout) {
+                    (Some(a), Some(b)) => a.min(b),
+                    (Some(value), None) | (None, Some(value)) => value,
+                    (None, None) => -1,
+                };
+                let ready = unsafe { libc::poll(&mut fd, 1, timeout) };
                 if ready < 0 {
                     let error = std::io::Error::last_os_error();
                     if error.kind() != std::io::ErrorKind::Interrupted {
