@@ -12,6 +12,7 @@ use std::{
     error::Error,
     fs,
     io::Write,
+    os::unix::ffi::OsStringExt,
     os::unix::net::UnixStream,
     path::{Path, PathBuf},
     process::Command,
@@ -79,6 +80,60 @@ pub fn apply(wallpaper: &Path) -> Result<()> {
     notify_consumers(directory);
     println!("Theme generated from {}", wallpaper.display());
     Ok(())
+}
+
+pub fn apply_from_wallpaper_state(state: &Path, wallpaper_directory: &Path) -> Result<()> {
+    let saved = fs::read_to_string(state)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|value| value["wallpaper"].as_str().map(str::to_owned))
+        .and_then(|url| decode_file_url(&url));
+    let wallpaper = match saved.filter(|path| path.is_file()) {
+        Some(path) => path,
+        None => first_wallpaper(wallpaper_directory)?,
+    };
+    apply(&wallpaper)
+}
+
+fn first_wallpaper(directory: &Path) -> Result<PathBuf> {
+    let mut candidates = fs::read_dir(directory)?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|extension| {
+                        matches!(
+                            extension.to_ascii_lowercase().as_str(),
+                            "jpg" | "jpeg" | "png" | "webp" | "bmp"
+                        )
+                    })
+        })
+        .collect::<Vec<_>>();
+    candidates.sort();
+    candidates
+        .into_iter()
+        .next()
+        .ok_or_else(|| format!("no wallpapers found in {}", directory.display()).into())
+}
+
+fn decode_file_url(url: &str) -> Option<PathBuf> {
+    let encoded = url.strip_prefix("file://")?.as_bytes();
+    let mut bytes = Vec::with_capacity(encoded.len());
+    let mut index = 0;
+    while index < encoded.len() {
+        if encoded[index] == b'%' {
+            let hex = encoded.get(index + 1..index + 3)?;
+            let value = u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()?;
+            bytes.push(value);
+            index += 3;
+        } else {
+            bytes.push(encoded[index]);
+            index += 1;
+        }
+    }
+    Some(PathBuf::from(std::ffi::OsString::from_vec(bytes)))
 }
 
 fn render(path: PathBuf, source: &str, state: &ThemeState) -> Result<()> {
@@ -259,5 +314,14 @@ mod tests {
         assert!(state.colors.contains_key("surface_container"));
         assert!(state.colors.contains_key("terminal_bright_white"));
         assert_eq!(state.colors["primary"].default.hex.len(), 7);
+    }
+
+    #[test]
+    fn decodes_wallpaper_file_urls() {
+        assert_eq!(
+            decode_file_url("file:///tmp/Bild%20%231%25%20%C3%A4.png").unwrap(),
+            PathBuf::from("/tmp/Bild #1% ä.png")
+        );
+        assert!(decode_file_url("https://example.com/wallpaper.png").is_none());
     }
 }

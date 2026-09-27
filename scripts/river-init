@@ -52,6 +52,11 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+wallpaper_state="${XDG_STATE_HOME:-$HOME/.local/state}/mywm/wallpaper.json"
+if ! "$wm_binary" --theme-from-state "$wallpaper_state"; then
+    echo 'Warnung: Theme konnte beim Sitzungsstart nicht aus dem Wallpaper erzeugt werden.' >&2
+fi
+
 kanshi -c "$monitor_config" &
 children+=("$!")
 "$wm_binary" &

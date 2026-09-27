@@ -1547,6 +1547,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .ok_or("--theme-from-wallpaper requires an image path")?;
             return theme::apply(std::path::Path::new(&wallpaper));
         }
+        Some("--theme-from-state") => {
+            let state = std::env::args()
+                .nth(2)
+                .ok_or("--theme-from-state requires a wallpaper state path")?;
+            let directory = std::env::args()
+                .nth(3)
+                .unwrap_or_else(|| config.wallpaper_directory.clone());
+            return theme::apply_from_wallpaper_state(
+                std::path::Path::new(&state),
+                std::path::Path::new(&directory),
+            );
+        }
         Some("--wallpaper-list") => return wallpaper::list(&config),
         Some("--wallpaper") => return wallpaper::run(&config),
         Some("--wallpaper-picker") => {
