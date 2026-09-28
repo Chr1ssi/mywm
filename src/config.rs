@@ -113,10 +113,10 @@ impl Default for Bindings {
             focus_output_right: keys(&["Super+Alt+Right"]),
             focus_output_up: keys(&["Super+Alt+Up"]),
             focus_output_down: keys(&["Super+Alt+Down"]),
-            move_to_output_left: keys(&["Super+Alt+Shift+Left"]),
-            move_to_output_right: keys(&["Super+Alt+Shift+Right"]),
-            move_to_output_up: keys(&["Super+Alt+Shift+Up"]),
-            move_to_output_down: keys(&["Super+Alt+Shift+Down"]),
+            move_to_output_left: keys(&["Super+Shift+Left"]),
+            move_to_output_right: keys(&["Super+Shift+Right"]),
+            move_to_output_up: keys(&["Super+Shift+Up"]),
+            move_to_output_down: keys(&["Super+Shift+Down"]),
             pointer_modifiers: "Super".into(),
             terminal: keys(&["Super+Return"]),
             launcher: keys(&["Super+Space"]),
@@ -124,12 +124,12 @@ impl Default for Bindings {
             exit: keys(&["Super+m"]),
             focus_left: keys(&["Super+h", "Super+Left"]),
             focus_right: keys(&["Super+l", "Super+Right"]),
-            move_left: keys(&["Super+Shift+h", "Super+Shift+Left"]),
-            move_right: keys(&["Super+Shift+l", "Super+Shift+Right"]),
+            move_left: keys(&["Super+Shift+h"]),
+            move_right: keys(&["Super+Shift+l"]),
             workspace_previous: keys(&["Super+Ctrl+Left", "Super+Ctrl+Up"]),
             workspace_next: keys(&["Super+Ctrl+Right", "Super+Ctrl+Down"]),
-            move_to_workspace_previous: keys(&["Super+Shift+Up"]),
-            move_to_workspace_next: keys(&["Super+Shift+Down"]),
+            move_to_workspace_previous: keys(&["Super+Ctrl+Shift+Up"]),
+            move_to_workspace_next: keys(&["Super+Ctrl+Shift+Down"]),
             workspace_modifiers: "Super".into(),
             move_to_workspace_modifiers: "Super+Shift".into(),
         }
@@ -455,11 +455,11 @@ mod tests {
     fn defaults_and_partial_configuration() {
         let defaults = Config::parse("").unwrap();
         assert_eq!(defaults.workspaces, 9);
-        assert_eq!(defaults.keybindings().unwrap().len(), 50);
+        assert_eq!(defaults.keybindings().unwrap().len(), 48);
         assert!(defaults.program_bindings.is_empty());
         let config =
             Config::parse("workspaces = 3\nterminal = ['kitty', '--single-instance']").unwrap();
-        assert_eq!(config.keybindings().unwrap().len(), 38);
+        assert_eq!(config.keybindings().unwrap().len(), 36);
         assert_eq!(config.terminal[1], "--single-instance");
         Config::parse(include_str!("../config/mywm.toml")).unwrap();
     }
@@ -511,7 +511,7 @@ mod tests {
             "[program_bindings.browser]\nkeys = ['Super+b', 'Super+Shift+b']\ncommand = ['firefox', '--private-window']",
         )
         .unwrap();
-        assert_eq!(config.keybindings().unwrap().len(), 52);
+        assert_eq!(config.keybindings().unwrap().len(), 50);
         let binding = config.program_bindings.get("browser").unwrap();
         assert_eq!(binding.command, ["firefox", "--private-window"]);
     }

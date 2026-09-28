@@ -122,6 +122,25 @@ impl<T: Clone + Eq> Workspaces<T> {
         }
     }
 
+    pub fn can_navigate_matching(
+        &self,
+        direction: isize,
+        mut include: impl FnMut(&T) -> bool,
+    ) -> bool {
+        let workspace = self.current();
+        let indices: Vec<_> = workspace
+            .windows
+            .iter()
+            .enumerate()
+            .filter_map(|(index, id)| include(id).then_some(index))
+            .collect();
+        indices
+            .iter()
+            .position(|index| Some(&workspace.windows[*index]) == workspace.focused.as_ref())
+            .and_then(|slot| slot.checked_add_signed(direction))
+            .is_some_and(|slot| slot < indices.len())
+    }
+
     pub fn remove(&mut self, window: &T) {
         for workspace in &mut self.entries {
             if workspace.windows.contains(window) {
@@ -228,6 +247,8 @@ mod tests {
         desktop.navigate_matching(-1, true, |id| *id != 2);
         assert_eq!(desktop.current().windows, [3, 2, 1]);
         assert_eq!(desktop.current().focused, Some(3));
+        assert!(!desktop.can_navigate_matching(-1, |id| *id != 2));
+        assert!(desktop.can_navigate_matching(1, |id| *id != 2));
         desktop.navigate(1, false);
         assert_eq!(desktop.current().focused, Some(2));
     }

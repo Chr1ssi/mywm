@@ -842,6 +842,36 @@ fn run_actions(state: &mut State, manager: &RiverWindowManagerV1, qh: &QueueHand
                 else {
                     continue;
                 };
+                let horizontal = match direction {
+                    OutputDirection::Left => Some(-1),
+                    OutputDirection::Right => Some(1),
+                    OutputDirection::Up | OutputDirection::Down => None,
+                };
+                if !state
+                    .windows
+                    .iter()
+                    .any(|window| window.river_window.id() == id && window.floating)
+                    && let Some(direction) = horizontal
+                {
+                    let tiled: Vec<_> = state
+                        .windows
+                        .iter()
+                        .filter(|window| !window.floating)
+                        .map(|window| window.river_window.id())
+                        .collect();
+                    if state.outputs[source]
+                        .workspaces
+                        .can_navigate_matching(direction, |candidate| tiled.contains(candidate))
+                    {
+                        state.outputs[source].workspaces.navigate_matching(
+                            direction,
+                            true,
+                            |candidate| tiled.contains(candidate),
+                        );
+                        focus_output(state, source);
+                        continue;
+                    }
+                }
                 let Some(target) = adjacent_output(state, source, direction) else {
                     continue;
                 };

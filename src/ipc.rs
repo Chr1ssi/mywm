@@ -132,6 +132,7 @@ fn parse(line: &str, state: &State) -> Option<Action> {
         ["v1", "lock"] => Some(Action::Lock),
         ["v1", "logout"] => Some(Action::Exit),
         ["v1", "theme-reload"] => Some(Action::Reload),
+        ["v1", "scratchpad"] => Some(Action::ToggleScratchpad),
         ["v1", "workspace", output, workspace] => {
             let output = output.parse::<u32>().ok()?;
             let workspace = workspace.parse::<usize>().ok()?.checked_sub(1)?;
@@ -198,9 +199,11 @@ fn snapshot(state: &State) -> String {
         })
         .collect();
     format!(
-        "v1 state {} {}\nv1 locked {}\n",
+        "v1 state {} {}\nv1 scratchpad {} {}\nv1 locked {}\n",
         state.config.workspaces,
         outputs.join(";"),
+        u8::from(state.scratchpad_visible),
+        u8::from(!state.scratchpad.windows.is_empty()),
         u8::from(state.session_locked)
     )
 }

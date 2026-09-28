@@ -216,12 +216,12 @@ floating = true
 | Super + Escape | Sitzung sperren |
 | Super + Shift + W | Wallpaper-Picker öffnen |
 | Super + H/L oder Pfeil links/rechts | Fenster fokussieren |
-| Super + Shift + H/L | gekacheltes Fenster verschieben |
+| Super + Shift + H/L | gekacheltes Fenster innerhalb des Workspace verschieben |
 | Super + V | Floating-Modus umschalten |
 | Super + ` | Scratchpad ein-/ausblenden |
 | Super + Shift + ` | Fenster ins Scratchpad beziehungsweise zurück verschieben |
 | Super + Alt + Pfeiltasten | Fokus zum Nachbarmonitor bewegen |
-| Super + Alt + Shift + Pfeiltasten | Fenster zum Nachbarmonitor bewegen |
+| Super + Shift + Pfeiltasten | Fenster im Workspace und am Rand zum Nachbarmonitor bewegen |
 | Super + linke Maustaste | Floating-Fenster verschieben |
 | Super + rechte Maustaste | Fenster beziehungsweise Spalte skalieren |
 | Super + Q | fokussiertes Fenster schließen |

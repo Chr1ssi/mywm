@@ -62,23 +62,23 @@ focus_output_left = ["Super+Alt+Left"]
 focus_output_right = ["Super+Alt+Right"]
 focus_output_up = ["Super+Alt+Up"]
 focus_output_down = ["Super+Alt+Down"]
-move_to_output_left = ["Super+Alt+Shift+Left"]
-move_to_output_right = ["Super+Alt+Shift+Right"]
-move_to_output_up = ["Super+Alt+Shift+Up"]
-move_to_output_down = ["Super+Alt+Shift+Down"]
+move_to_output_left = ["Super+Shift+Left"]
+move_to_output_right = ["Super+Shift+Right"]
+move_to_output_up = ["Super+Shift+Up"]
+move_to_output_down = ["Super+Shift+Down"]
 # Mit linker Maustaste Floating-Fenster verschieben; mit rechter Floating-Fenster
 # oder gekachelte Spalten skalieren.
 pointer_modifiers = "Super"
 focus_left = ["Super+h", "Super+Left"]
 focus_right = ["Super+l", "Super+Right"]
-move_left = ["Super+Shift+h", "Super+Shift+Left"]
-move_right = ["Super+Shift+l", "Super+Shift+Right"]
+move_left = ["Super+Shift+h"]
+move_right = ["Super+Shift+l"]
 # Workspace auf dem aktuellen Monitor wechseln (zyklisch).
 workspace_previous = ["Super+Ctrl+Left", "Super+Ctrl+Up"]
 workspace_next = ["Super+Ctrl+Right", "Super+Ctrl+Down"]
 # Fenster in den vorigen/nächsten Workspace des Monitors verschieben.
-move_to_workspace_previous = ["Super+Shift+Up"]
-move_to_workspace_next = ["Super+Shift+Down"]
+move_to_workspace_previous = ["Super+Ctrl+Shift+Up"]
+move_to_workspace_next = ["Super+Ctrl+Shift+Down"]
 # Zusammen mit den Ziffern 1 bis workspaces.
 workspace_modifiers = "Super"
 move_to_workspace_modifiers = "Super+Shift"
