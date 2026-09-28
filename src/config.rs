@@ -11,6 +11,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub workspace_outputs: std::collections::BTreeMap<String, Vec<usize>>,
+    pub async_outputs: Vec<String>,
     pub wallpaper_directory: String,
     pub idle: crate::session::IdleConfig,
     pub keyboard: crate::keyboard::KeyboardConfig,
@@ -31,6 +32,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             workspace_outputs: Default::default(),
+            async_outputs: Vec::new(),
             wallpaper_directory: std::env::var("HOME")
                 .map(|home| format!("{home}/Bilder/Wallpaper"))
                 .unwrap_or_else(|_| "/usr/share/backgrounds".into()),
@@ -176,6 +178,13 @@ impl Config {
             if seen.len() != config.workspaces {
                 return Err("workspace_outputs must assign every workspace".into());
             }
+        }
+        if config
+            .async_outputs
+            .iter()
+            .any(|output| output.trim().is_empty())
+        {
+            return Err("async_outputs must not contain empty output names".into());
         }
         if !(1..=9).contains(&config.workspaces) {
             return Err("workspaces must be between 1 and 9".into());

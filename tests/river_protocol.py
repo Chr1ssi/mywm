@@ -10,6 +10,7 @@ import socket
 import select
 import struct
 import subprocess
+import tempfile
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -182,21 +183,27 @@ def has(requests, name, object_id=None, **arguments):
 
 
 def main():
-    peer = RiverPeer()
+    with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as config:
+        config.write('async_outputs = ["DP-3"]\n')
+        config.write((ROOT / "tests/fixtures/plain.toml").read_text())
+        config_path = config.name
+    peer = RiverPeer(config=config_path, output_names={100: "DP-3", 101: "HDMI-A-1"})
     try:
         while len([i for i in peer.objects.values() if i.startswith("river_")]) < 2:
             peer.request()
         left = peer.child("output")
+        peer.event(left, "wl_output", 100)
         peer.event(left, "position", 0, 0)
         peer.event(left, "dimensions", 1920, 1080)
         right = peer.child("output")
+        peer.event(right, "wl_output", 101)
         peer.event(right, "position", 1920, 0)
         peer.event(right, "dimensions", 1920, 1080)
         seat = peer.child("seat")
         peer.event(seat, "pointer_position", 100, 100)
         requests = peer.cycle()
         assert has(requests, "set_presentation_mode", left, mode=1)
-        assert has(requests, "set_presentation_mode", right, mode=1)
+        assert has(requests, "set_presentation_mode", right, mode=0)
         first = peer.child("window")
         requests = peer.cycle()
         assert has(requests, "propose_dimensions", first, width=1920, height=1080)
@@ -388,6 +395,7 @@ def main():
         print("Protocol checks passed: workspace visibility, focus, move, close, multiple outputs, unplug/replug, floating, pointer move/resize, cancellation, exit")
     finally:
         peer.close()
+        os.unlink(config_path)
 
 
 if __name__ == "__main__":

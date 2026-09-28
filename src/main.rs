@@ -67,7 +67,7 @@ struct Output {
     workspaces: Workspaces<ObjectId>,
     layer_output: Option<RiverLayerShellOutputV1>,
     non_exclusive_area: Option<Rect>,
-    async_presentation_set: bool,
+    presentation_mode_set: bool,
 }
 
 struct State {
@@ -1213,7 +1213,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     workspaces: Workspaces::new(state.config.workspaces),
                     layer_output: None,
                     non_exclusive_area: None,
-                    async_presentation_set: false,
+                    presentation_mode_set: false,
                 });
 
                 layer_shell::setup(state, qh);
@@ -1337,11 +1337,25 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                         Some(std::time::Instant::now() + std::time::Duration::from_millis(500));
                 }
                 for output in &mut state.outputs {
-                    if !output.async_presentation_set && output.river_output.version() >= 4 {
-                        output.river_output.set_presentation_mode(
-                            river::river_window_management::river_output_v1::PresentationMode::Async,
-                        );
-                        output.async_presentation_set = true;
+                    if !output.presentation_mode_set
+                        && output.river_output.version() >= 4
+                        && let Some(name) = output
+                            .wl_global
+                            .and_then(|global| state.wl_outputs.get(&global))
+                            .and_then(|(_, name)| name.as_deref())
+                    {
+                        let mode = if state
+                            .config
+                            .async_outputs
+                            .iter()
+                            .any(|configured| configured == name)
+                        {
+                            river::river_window_management::river_output_v1::PresentationMode::Async
+                        } else {
+                            river::river_window_management::river_output_v1::PresentationMode::Vsync
+                        };
+                        output.river_output.set_presentation_mode(mode);
+                        output.presentation_mode_set = true;
                     }
                 }
                 for window in state

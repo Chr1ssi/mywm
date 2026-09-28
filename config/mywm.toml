@@ -1,5 +1,7 @@
 # Neun globale Workspaces; Monitorzuordnung unten. Änderungen gelten nach Neustart.
 workspaces = 9
+# Outputs not listed here use tear-free VSync presentation.
+async_outputs = ["DP-3"]
 # Fenster mit Elternfenster (z. B. Dateidialoge) standardmäßig frei schwebend.
 float_dialogs = true
 # Workspace 3 liegt auf DP-3 (Hauptmonitor) und ist ausschließlich für Spiele reserviert.
