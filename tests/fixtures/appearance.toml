@@ -1,0 +1,6 @@
+[appearance]
+gaps_inner = 8
+gaps_outer = 8
+border_width = 2
+active_border = "#89b4fa"
+inactive_border = "#45475a"

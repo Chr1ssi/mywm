@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Default decoration geometry, border colors and clipping in actual requests."""
+"""Configured decoration geometry, border colors and clipping in actual requests."""
 from river_protocol import ROOT, RiverPeer, has
 
 
 def main():
-    peer = RiverPeer(config=ROOT / "config/mywm.toml", layer_shell=True)
+    peer = RiverPeer(config=ROOT / "tests/fixtures/appearance.toml", layer_shell=True)
     try:
         while "river_layer_shell_v1" not in peer.objects.values():
             peer.request()
