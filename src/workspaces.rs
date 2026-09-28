@@ -16,6 +16,21 @@ impl<T> Default for Workspace<T> {
     }
 }
 
+impl<T: Clone + Eq> Workspace<T> {
+    pub fn remove(&mut self, window: &T) {
+        if let Some(index) = self.windows.iter().position(|id| id == window) {
+            self.windows.remove(index);
+            if self.focused.as_ref() == Some(window) {
+                self.focused = self
+                    .windows
+                    .get(index)
+                    .or_else(|| self.windows.last())
+                    .cloned();
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Workspaces<T> {
     pub active: usize,
@@ -109,15 +124,8 @@ impl<T: Clone + Eq> Workspaces<T> {
 
     pub fn remove(&mut self, window: &T) {
         for workspace in &mut self.entries {
-            if let Some(index) = workspace.windows.iter().position(|id| id == window) {
-                workspace.windows.remove(index);
-                if workspace.focused.as_ref() == Some(window) {
-                    workspace.focused = workspace
-                        .windows
-                        .get(index)
-                        .or_else(|| workspace.windows.last())
-                        .cloned();
-                }
+            if workspace.windows.contains(window) {
+                workspace.remove(window);
                 if workspace.windows.is_empty() {
                     workspace.scroll = 0;
                 }

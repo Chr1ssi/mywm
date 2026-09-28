@@ -1,4 +1,4 @@
-use crate::{Action, river::river_window_management::river_seat_v1::Modifiers};
+use crate::{Action, OutputDirection, river::river_window_management::river_seat_v1::Modifiers};
 use serde::Deserialize;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -84,6 +84,16 @@ pub struct Bindings {
     move_to_workspace_previous: Vec<String>,
     move_to_workspace_next: Vec<String>,
     toggle_floating: Vec<String>,
+    toggle_scratchpad: Vec<String>,
+    move_to_scratchpad: Vec<String>,
+    focus_output_left: Vec<String>,
+    focus_output_right: Vec<String>,
+    focus_output_up: Vec<String>,
+    focus_output_down: Vec<String>,
+    move_to_output_left: Vec<String>,
+    move_to_output_right: Vec<String>,
+    move_to_output_up: Vec<String>,
+    move_to_output_down: Vec<String>,
     pointer_modifiers: String,
     workspace_modifiers: String,
     move_to_workspace_modifiers: String,
@@ -97,6 +107,16 @@ impl Default for Bindings {
             wallpaper: keys(&["Super+Shift+w"]),
             lock: keys(&["Super+Escape"]),
             toggle_floating: keys(&["Super+v"]),
+            toggle_scratchpad: keys(&["Super+grave"]),
+            move_to_scratchpad: keys(&["Super+Shift+grave"]),
+            focus_output_left: keys(&["Super+Alt+Left"]),
+            focus_output_right: keys(&["Super+Alt+Right"]),
+            focus_output_up: keys(&["Super+Alt+Up"]),
+            focus_output_down: keys(&["Super+Alt+Down"]),
+            move_to_output_left: keys(&["Super+Alt+Shift+Left"]),
+            move_to_output_right: keys(&["Super+Alt+Shift+Right"]),
+            move_to_output_up: keys(&["Super+Alt+Shift+Up"]),
+            move_to_output_down: keys(&["Super+Alt+Shift+Down"]),
             pointer_modifiers: "Super".into(),
             terminal: keys(&["Super+Return"]),
             launcher: keys(&["Super+Space"]),
@@ -273,6 +293,40 @@ impl Config {
             (&self.bindings.close, Action::Close),
             (&self.bindings.exit, Action::Exit),
             (&self.bindings.toggle_floating, Action::ToggleFloating),
+            (&self.bindings.toggle_scratchpad, Action::ToggleScratchpad),
+            (&self.bindings.move_to_scratchpad, Action::MoveToScratchpad),
+            (
+                &self.bindings.focus_output_left,
+                Action::FocusOutput(OutputDirection::Left),
+            ),
+            (
+                &self.bindings.focus_output_right,
+                Action::FocusOutput(OutputDirection::Right),
+            ),
+            (
+                &self.bindings.focus_output_up,
+                Action::FocusOutput(OutputDirection::Up),
+            ),
+            (
+                &self.bindings.focus_output_down,
+                Action::FocusOutput(OutputDirection::Down),
+            ),
+            (
+                &self.bindings.move_to_output_left,
+                Action::MoveToOutput(OutputDirection::Left),
+            ),
+            (
+                &self.bindings.move_to_output_right,
+                Action::MoveToOutput(OutputDirection::Right),
+            ),
+            (
+                &self.bindings.move_to_output_up,
+                Action::MoveToOutput(OutputDirection::Up),
+            ),
+            (
+                &self.bindings.move_to_output_down,
+                Action::MoveToOutput(OutputDirection::Down),
+            ),
             (&self.bindings.focus_left, Action::Focus(-1)),
             (&self.bindings.focus_right, Action::Focus(1)),
             (&self.bindings.move_left, Action::Move(-1)),
@@ -368,6 +422,7 @@ fn parse_key(key: &str) -> Result<(u32, Modifiers)> {
         "space" => 0x20,
         "tab" => 0xff09,
         "escape" | "esc" => 0xff1b,
+        "grave" => 0x60,
         value if value.len() == 1 && value.as_bytes()[0].is_ascii_alphanumeric() => {
             value.as_bytes()[0] as u32
         }
@@ -400,11 +455,11 @@ mod tests {
     fn defaults_and_partial_configuration() {
         let defaults = Config::parse("").unwrap();
         assert_eq!(defaults.workspaces, 9);
-        assert_eq!(defaults.keybindings().unwrap().len(), 40);
+        assert_eq!(defaults.keybindings().unwrap().len(), 50);
         assert!(defaults.program_bindings.is_empty());
         let config =
             Config::parse("workspaces = 3\nterminal = ['kitty', '--single-instance']").unwrap();
-        assert_eq!(config.keybindings().unwrap().len(), 28);
+        assert_eq!(config.keybindings().unwrap().len(), 38);
         assert_eq!(config.terminal[1], "--single-instance");
         Config::parse(include_str!("../config/mywm.toml")).unwrap();
     }
@@ -456,7 +511,7 @@ mod tests {
             "[program_bindings.browser]\nkeys = ['Super+b', 'Super+Shift+b']\ncommand = ['firefox', '--private-window']",
         )
         .unwrap();
-        assert_eq!(config.keybindings().unwrap().len(), 42);
+        assert_eq!(config.keybindings().unwrap().len(), 52);
         let binding = config.program_bindings.get("browser").unwrap();
         assert_eq!(binding.command, ["firefox", "--private-window"]);
     }

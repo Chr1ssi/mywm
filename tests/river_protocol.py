@@ -7,6 +7,7 @@ this tests protocol integration, not rendering or physical keyboard matching.
 import os
 from pathlib import Path
 import socket
+import select
 import struct
 import subprocess
 import xml.etree.ElementTree as ET
@@ -18,10 +19,14 @@ class RiverPeer:
     def __init__(self, config=None, layer_shell=False, output_names=None):
         self.output_names = output_names or {}
         self.interfaces = {}
-        for path in ["/usr/share/wayland/wayland.xml",
-                     "/usr/share/river-protocols/stable/river-window-management-v1.xml",
-                     "/usr/share/river-protocols/stable/river-xkb-bindings-v1.xml",
-                     "/usr/share/river-protocols/stable/river-layer-shell-v1.xml"]:
+        river_protocol_dir = Path(os.environ.get(
+            "RIVER_PROTOCOL_DIR", "/usr/share/river-protocols/stable"))
+        wayland_protocol = os.environ.get(
+            "WAYLAND_PROTOCOL_FILE", "/usr/share/wayland/wayland.xml")
+        for path in [wayland_protocol,
+                     river_protocol_dir / "river-window-management-v1.xml",
+                     river_protocol_dir / "river-xkb-bindings-v1.xml",
+                     river_protocol_dir / "river-layer-shell-v1.xml"]:
             for interface in ET.parse(path).getroot().findall("interface"):
                 self.interfaces[interface.attrib["name"]] = interface
         self.objects = {1: "wl_display"}
@@ -33,11 +38,16 @@ class RiverPeer:
         self.layer_seats = {}
         self.server_id = 0xfeffffff
         self.socket, client = socket.socketpair()
+        # Binding installation is intentionally bursty; keep the synthetic peer
+        # from applying backpressure before an individual test drains requests.
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)
+        client.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1 << 20)
         self.socket.settimeout(5)
         env = dict(os.environ, WAYLAND_SOCKET=str(client.fileno()),
                    MYWM_CONFIG=str(config or ROOT / "tests/fixtures/plain.toml"))
         env.pop("MYWM_SOCKET", None)
-        self.process = subprocess.Popen([str(ROOT / "target/debug/mywm")], env=env,
+        binary = os.environ.get("MYWM_TEST_BINARY", ROOT / "target/debug/mywm")
+        self.process = subprocess.Popen([str(binary)], env=env,
                                         pass_fds=(client.fileno(),), stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT, text=True)
         client.close()
@@ -146,6 +156,10 @@ class RiverPeer:
                 return requests
 
     def child(self, event):
+        # Give the client a chance to finish burst-installing bindings before
+        # injecting new server events. Stop after a short quiet period.
+        while select.select([self.socket], [], [], 0.02)[0]:
+            self.request()
         self.server_id += 1
         self.event(self.manager, event, self.server_id)
         return self.server_id
@@ -180,11 +194,39 @@ def main():
         peer.event(right, "dimensions", 1920, 1080)
         seat = peer.child("seat")
         peer.event(seat, "pointer_position", 100, 100)
-        peer.cycle()
+        requests = peer.cycle()
+        assert has(requests, "set_presentation_mode", left, mode=1)
+        assert has(requests, "set_presentation_mode", right, mode=1)
         first = peer.child("window")
         requests = peer.cycle()
         assert has(requests, "propose_dimensions", first, width=1920, height=1080)
         assert has(requests, "focus_window", seat, window=first)
+        # Output focus and window transfer follow physical monitor geometry.
+        peer.event(peer.bindings[(0xff53, 64 | 8)], "pressed")
+        requests = peer.cycle()
+        assert has(requests, "pointer_warp", seat, x=2880, y=540)
+        peer.event(peer.bindings[(0xff51, 64 | 8)], "pressed")
+        assert has(peer.cycle(), "pointer_warp", seat, x=960, y=540)
+        peer.event(peer.bindings[(0xff53, 64 | 8 | 1)], "pressed")
+        requests = peer.cycle()
+        assert has(requests, "set_position", peer.nodes[first], x=1920)
+        assert has(requests, "pointer_warp", seat, x=2880, y=540)
+        peer.event(peer.bindings[(0xff51, 64 | 8 | 1)], "pressed")
+        requests = peer.cycle()
+        assert has(requests, "set_position", peer.nodes[first], x=0)
+        assert has(requests, "pointer_warp", seat, x=960, y=540)
+        # Scratchpad windows float globally and can be hidden and restored.
+        peer.event(peer.bindings[(ord("`"), 64 | 1)], "pressed")
+        requests = peer.cycle()
+        assert has(requests, "set_tiled", first, edges=0)
+        assert has(requests, "propose_dimensions", first, width=1280, height=720)
+        peer.event(peer.bindings[(ord("`"), 64)], "pressed")
+        assert has(peer.cycle(), "hide", first)
+        peer.event(peer.bindings[(ord("`"), 64)], "pressed")
+        assert has(peer.cycle(), "show", first)
+        peer.event(peer.bindings[(ord("`"), 64 | 1)], "pressed")
+        requests = peer.cycle()
+        assert has(requests, "set_tiled", first, edges=15)
         second = peer.child("window")
         requests = peer.cycle()
         assert has(requests, "propose_dimensions", first, width=960)

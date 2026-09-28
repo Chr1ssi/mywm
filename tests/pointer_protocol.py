@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Verify flat/neutral pointer setup, hotplug, unsupported devices and removal."""
 import struct
+import os
+from pathlib import Path
 import xml.etree.ElementTree as ET
 from river_protocol import RiverPeer, has
 
@@ -8,8 +10,10 @@ from river_protocol import RiverPeer, has
 class PointerPeer(RiverPeer):
     def __init__(self):
         super().__init__()
+        protocol_dir = Path(os.environ.get(
+            "RIVER_PROTOCOL_DIR", "/usr/share/river-protocols/stable"))
         for name in ("input-management", "libinput-config"):
-            path = f"/usr/share/river-protocols/stable/river-{name}-v1.xml"
+            path = protocol_dir / f"river-{name}-v1.xml"
             for interface in ET.parse(path).getroot().findall("interface"):
                 self.interfaces[interface.attrib["name"]] = interface
 

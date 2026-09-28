@@ -35,8 +35,8 @@ use river::river_window_management::{
 use river::river_xkb_bindings::river_xkb_binding_v1::RiverXkbBindingV1;
 use river::river_xkb_bindings::river_xkb_bindings_seat_v1::RiverXkbBindingsSeatV1;
 use river::river_xkb_bindings::river_xkb_bindings_v1::RiverXkbBindingsV1;
-use wayland_client::backend::ObjectId;
-use workspaces::Workspaces;
+use wayland_client::backend::{ObjectId, WaylandError};
+use workspaces::{Workspace, Workspaces};
 
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle, protocol::wl_registry};
 
@@ -49,6 +49,7 @@ struct Window {
     proposal_retried: bool,
     output: Option<usize>,
     floating: bool,
+    scratchpad_floating: Option<bool>,
     fullscreen: bool,
     fullscreen_output: Option<ObjectId>,
     floating_rect: Option<Rect>,
@@ -66,6 +67,7 @@ struct Output {
     workspaces: Workspaces<ObjectId>,
     layer_output: Option<RiverLayerShellOutputV1>,
     non_exclusive_area: Option<Rect>,
+    async_presentation_set: bool,
 }
 
 struct State {
@@ -95,6 +97,8 @@ struct State {
     config: Config,
     keyboard: keyboard::KeyboardState,
     detached_workspaces: Option<Workspaces<ObjectId>>,
+    scratchpad: Workspace<ObjectId>,
+    scratchpad_visible: bool,
 
     bindings: Vec<RiverXkbBindingV1>,
     actions: Vec<Action>,
@@ -122,11 +126,23 @@ enum Action {
     Move(isize),
     Close,
     ToggleFloating,
+    ToggleScratchpad,
+    MoveToScratchpad,
+    FocusOutput(OutputDirection),
+    MoveToOutput(OutputDirection),
     Workspace(usize),
     WorkspaceRelative(isize),
     MoveToWorkspace(usize),
     MoveToWorkspaceRelative(isize),
     Program(usize),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum OutputDirection {
+    Left,
+    Right,
+    Up,
+    Down,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -224,7 +240,8 @@ fn update_drag(state: &mut State) {
             .iter_mut()
             .find(|w| w.river_window.id() == drag.window)
             && let Some(output) = window.output.and_then(|i| state.outputs.get(i))
-            && output.workspaces.current().windows.contains(&drag.window)
+            && (output.workspaces.current().windows.contains(&drag.window)
+                || (state.scratchpad_visible && state.scratchpad.windows.contains(&drag.window)))
             && let Some(Rect { width, height, .. }) = output.work_area()
         {
             if let Some((dx, dy)) = state.drag_delta.take() {
@@ -283,7 +300,9 @@ fn update_drag(state: &mut State) {
         return;
     };
     let output = &state.outputs[output_index];
-    if !output.workspaces.current().windows.contains(&id) {
+    if !output.workspaces.current().windows.contains(&id)
+        && !(state.scratchpad_visible && state.scratchpad.windows.contains(&id))
+    {
         return;
     }
     let Some(Rect {
@@ -451,6 +470,55 @@ fn focus_output(state: &mut State, output: usize) {
     }
 }
 
+fn focus_scratchpad(state: &mut State) {
+    state.focused_window = state.scratchpad.focused.clone();
+    state.focus_dirty = true;
+}
+
+fn adjacent_output(state: &State, source: usize, direction: OutputDirection) -> Option<usize> {
+    let source_area = state.outputs.get(source)?.work_area()?;
+    let source_center = (
+        source_area.x + source_area.width / 2,
+        source_area.y + source_area.height / 2,
+    );
+    state
+        .outputs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, output)| {
+            if index == source {
+                return None;
+            }
+            let area = output.work_area()?;
+            let dx = area.x + area.width / 2 - source_center.0;
+            let dy = area.y + area.height / 2 - source_center.1;
+            let (forward, sideways) = match direction {
+                OutputDirection::Left if dx < 0 => (-dx, dy.abs()),
+                OutputDirection::Right if dx > 0 => (dx, dy.abs()),
+                OutputDirection::Up if dy < 0 => (-dy, dx.abs()),
+                OutputDirection::Down if dy > 0 => (dy, dx.abs()),
+                _ => return None,
+            };
+            Some((
+                sideways as i64 * sideways as i64 + forward as i64 * forward as i64,
+                index,
+            ))
+        })
+        .min_by_key(|candidate| candidate.0)
+        .map(|candidate| candidate.1)
+}
+
+fn warp_to_output(state: &mut State, output: usize) {
+    if let Some(area) = state.outputs[output].work_area()
+        && let Some(seat) = &state.seat
+        && seat.version() >= 3
+    {
+        let position = (area.x + area.width / 2, area.y + area.height / 2);
+        seat.pointer_warp(position.0, position.1);
+        state.pointer_position = Some(position);
+    }
+}
+
 fn layout(state: &mut State) {
     for window in &mut state.windows {
         window.geometry = None;
@@ -550,6 +618,35 @@ fn layout(state: &mut State) {
             });
             window.geometry = Some((content.x, content.y, content.width, content.height));
             window.border_width = border;
+        }
+    }
+    if state.scratchpad_visible
+        && let Some(output) = output_at_pointer(state).or(state.focused_output)
+        && let Some(Rect {
+            x,
+            y,
+            width,
+            height,
+        }) = state.outputs[output].work_area()
+    {
+        for id in state.scratchpad.windows.clone() {
+            if let Some(window) = state.windows.iter_mut().find(|w| w.river_window.id() == id) {
+                window.output = Some(output);
+                window.floating = true;
+                let rect = window
+                    .floating_rect
+                    .unwrap_or_else(|| Rect::centered(width, height))
+                    .constrained(width, height);
+                window.floating_rect = Some(rect);
+                let (content, border) = state.config.appearance.content(Rect {
+                    x: x + rect.x,
+                    y: y + rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                });
+                window.geometry = Some((content.x, content.y, content.width, content.height));
+                window.border_width = border;
+            }
         }
     }
 }
@@ -678,6 +775,97 @@ fn run_actions(state: &mut State, manager: &RiverWindowManagerV1, qh: &QueueHand
                         focus_output(state, output);
                     }
                 }
+            }
+            Action::ToggleScratchpad => {
+                if state.scratchpad.windows.is_empty() {
+                    continue;
+                }
+                cancel_drag(state);
+                state.scratchpad_visible = !state.scratchpad_visible;
+                if state.scratchpad_visible {
+                    focus_scratchpad(state);
+                } else if let Some(output) = output_at_pointer(state).or(state.focused_output) {
+                    focus_output(state, output);
+                }
+            }
+            Action::MoveToScratchpad => {
+                let Some(id) = state.focused_window.clone() else {
+                    continue;
+                };
+                cancel_drag(state);
+                if state.scratchpad.windows.contains(&id) {
+                    state.scratchpad.remove(&id);
+                    state.scratchpad_visible = !state.scratchpad.windows.is_empty();
+                    if let Some(output) = output_at_pointer(state).or(state.focused_output) {
+                        state.outputs[output].workspaces.add(id.clone());
+                        if let Some(window) =
+                            state.windows.iter_mut().find(|w| w.river_window.id() == id)
+                        {
+                            window.output = Some(output);
+                            window.floating = window.scratchpad_floating.take().unwrap_or(true);
+                        }
+                        focus_output(state, output);
+                    }
+                } else {
+                    for output in &mut state.outputs {
+                        output.workspaces.remove(&id);
+                    }
+                    state.scratchpad.windows.push(id.clone());
+                    state.scratchpad.focused = Some(id.clone());
+                    state.scratchpad_visible = true;
+                    if let Some(window) =
+                        state.windows.iter_mut().find(|w| w.river_window.id() == id)
+                    {
+                        window.scratchpad_floating = Some(window.floating);
+                        window.floating = true;
+                    }
+                    focus_scratchpad(state);
+                }
+            }
+            Action::FocusOutput(direction) => {
+                if let Some(source) = output_at_pointer(state).or(state.focused_output)
+                    && let Some(target) = adjacent_output(state, source, direction)
+                {
+                    focus_output(state, target);
+                    warp_to_output(state, target);
+                }
+            }
+            Action::MoveToOutput(direction) => {
+                let Some(id) = state.focused_window.clone() else {
+                    continue;
+                };
+                let Some(source) = state
+                    .windows
+                    .iter()
+                    .find(|window| window.river_window.id() == id)
+                    .and_then(|window| window.output)
+                else {
+                    continue;
+                };
+                let Some(target) = adjacent_output(state, source, direction) else {
+                    continue;
+                };
+                let workspace = state.outputs[target].workspaces.active;
+                if !workspace_accepts(state, workspace, &id) {
+                    continue;
+                }
+                cancel_drag(state);
+                state.outputs[source].workspaces.remove(&id);
+                state.outputs[target]
+                    .workspaces
+                    .add_to(workspace, id.clone());
+                if let Some(window) = state
+                    .windows
+                    .iter_mut()
+                    .find(|window| window.river_window.id() == id)
+                {
+                    window.output = Some(target);
+                    if window.floating {
+                        window.floating_rect = None;
+                    }
+                }
+                focus_output(state, target);
+                warp_to_output(state, target);
             }
             Action::Close
             | Action::Focus(_)
@@ -881,6 +1069,7 @@ fn remove_window(state: &mut State, window_id: wayland_client::backend::ObjectId
     for output in &mut state.outputs {
         output.workspaces.remove(&window_id);
     }
+    state.scratchpad.remove(&window_id);
     if let Some(workspaces) = &mut state.detached_workspaces {
         workspaces.remove(&window_id);
     }
@@ -974,6 +1163,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     proposal_retried: false,
                     output: None,
                     floating: false,
+                    scratchpad_floating: None,
                     fullscreen: false,
                     fullscreen_output: None,
                     floating_rect: None,
@@ -993,6 +1183,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     workspaces: Workspaces::new(state.config.workspaces),
                     layer_output: None,
                     non_exclusive_area: None,
+                    async_presentation_set: false,
                 });
 
                 layer_shell::setup(state, qh);
@@ -1114,6 +1305,14 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                 {
                     state.dimension_retry_at =
                         Some(std::time::Instant::now() + std::time::Duration::from_millis(500));
+                }
+                for output in &mut state.outputs {
+                    if !output.async_presentation_set && output.river_output.version() >= 4 {
+                        output.river_output.set_presentation_mode(
+                            river::river_window_management::river_output_v1::PresentationMode::Async,
+                        );
+                        output.async_presentation_set = true;
+                    }
                 }
                 for window in state
                     .windows
@@ -1460,6 +1659,12 @@ impl Dispatch<RiverSeatV1, ()> for State {
                     return;
                 };
 
+                if state.scratchpad_visible && state.scratchpad.windows.contains(&window.id()) {
+                    state.scratchpad.focused = Some(window.id());
+                    focus_scratchpad(state);
+                    return;
+                }
+
                 if let Some(output) = state.windows[window_index].output
                     && state.outputs[output].workspaces.focus(&window.id())
                 {
@@ -1626,6 +1831,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         focus_dirty: false,
         config,
         detached_workspaces: None,
+        scratchpad: Workspace::default(),
+        scratchpad_visible: false,
         bindings: Vec::new(),
         actions: Vec::new(),
         exit_requested: false,
@@ -1651,11 +1858,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ipc.update(&mut state);
             }
             run_dimension_retry(&mut state);
-            conn.flush()?;
+            let flush_blocked = match conn.flush() {
+                Ok(()) => false,
+                Err(WaylandError::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    true
+                }
+                Err(error) => return Err(error.into()),
+            };
             if let Some(guard) = event_queue.prepare_read() {
                 let mut fd = libc::pollfd {
                     fd: guard.connection_fd().as_raw_fd(),
-                    events: libc::POLLIN,
+                    events: libc::POLLIN | if flush_blocked { libc::POLLOUT } else { 0 },
                     revents: 0,
                 };
                 // A bounded wait services bar clients and scheduled layout retries while idle.
@@ -1676,8 +1889,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if error.kind() != std::io::ErrorKind::Interrupted {
                         return Err(error.into());
                     }
-                } else if ready > 0 {
-                    guard.read()?;
+                } else if ready > 0 && fd.revents & libc::POLLIN != 0 {
+                    match guard.read() {
+                        Ok(_) => {}
+                        Err(WaylandError::Io(error))
+                            if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                        Err(error) => return Err(error.into()),
+                    }
                 }
             }
             Ok(())

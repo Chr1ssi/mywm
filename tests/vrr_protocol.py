@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 from river_protocol import RiverPeer
+from smoke_support import wait_for
 
 
 def main():
@@ -47,9 +48,12 @@ def main():
             peer.cycle()
             peer.key("2")
 
-            changes = log.read_text().splitlines()
+            changes = wait_for(
+                lambda: log.read_text().splitlines()
+                if log.exists() and len(log.read_text().splitlines()) == 2
+                else None
+            )
             assert changes == [
-                "--output DP-3 --adaptive-sync disabled",
                 "--output DP-3 --adaptive-sync enabled",
                 "--output DP-3 --adaptive-sync disabled",
             ], changes

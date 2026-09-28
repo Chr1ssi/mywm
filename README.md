@@ -13,8 +13,10 @@ nicht als universeller oder stabiler Desktop gedacht.
 ## Funktionen
 
 - horizontales Scrolling-Layout mit individuell skalierbaren Spalten
+- globaler Floating-Scratchpad-Stack
 - Floating-Fenster mit Mausverschiebung und Größenänderung
 - unabhängige Workspaces pro Monitor sowie feste Monitorzuordnungen
+- gerichteter Monitorfokus und Fenstertransfer zwischen Monitoren
 - Hotplug-Unterstützung ohne Verlust der Workspace-Zuordnung
 - konfigurierbare Tastenkürzel, Programmstarter und Autostart-Befehle
 - Fensterregeln für App-ID, Dialoge, Workspace und Floating-Modus
@@ -216,6 +218,10 @@ floating = true
 | Super + H/L oder Pfeil links/rechts | Fenster fokussieren |
 | Super + Shift + H/L | gekacheltes Fenster verschieben |
 | Super + V | Floating-Modus umschalten |
+| Super + ` | Scratchpad ein-/ausblenden |
+| Super + Shift + ` | Fenster ins Scratchpad beziehungsweise zurück verschieben |
+| Super + Alt + Pfeiltasten | Fokus zum Nachbarmonitor bewegen |
+| Super + Alt + Shift + Pfeiltasten | Fenster zum Nachbarmonitor bewegen |
 | Super + linke Maustaste | Floating-Fenster verschieben |
 | Super + rechte Maustaste | Fenster beziehungsweise Spalte skalieren |
 | Super + Q | fokussiertes Fenster schließen |
