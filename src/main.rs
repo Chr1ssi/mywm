@@ -47,6 +47,10 @@ struct Window {
     actual_dimensions: Option<(i32, i32)>,
     proposed_dimensions: Option<(i32, i32)>,
     proposal_retried: bool,
+    /// Propose one pixel less on the next layout to force a fresh configure.
+    nudge: bool,
+    /// The nudge was sent; propose the real size again on the next layout.
+    nudge_restore: bool,
     output: Option<usize>,
     floating: bool,
     scratchpad_floating: Option<bool>,
@@ -213,8 +217,16 @@ fn run_dimension_retry(state: &mut State) {
     state.dimension_retry_at = None;
     let mut retry_layout = false;
     for window in &mut state.windows {
-        if needs_dimension_retry(window) {
+        if window.nudge_restore {
+            window.nudge_restore = false;
+            retry_layout = true;
+        } else if needs_dimension_retry(window) {
+            // Resending the same proposal does not produce a new configure, and
+            // Chromium keeps a stale window geometry (and thus a wrongly sized
+            // border) after the output changed. A differing size makes it commit
+            // fresh geometry.
             window.proposal_retried = true;
+            window.nudge = true;
             retry_layout = true;
         }
     }
@@ -1191,6 +1203,8 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     actual_dimensions: None,
                     proposed_dimensions: None,
                     proposal_retried: false,
+                    nudge: false,
+                    nudge_restore: false,
                     output: None,
                     floating: false,
                     scratchpad_floating: None,
@@ -1265,6 +1279,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                 layout(state);
                 fullscreen::apply(state);
                 vrr::apply(state);
+                let mut schedule_nudge_restore = false;
                 for window in &mut state.windows {
                     // The WM supplies focus borders, but no title bar.
                     window.river_window.use_ssd();
@@ -1287,8 +1302,22 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                             window.proposal_retried = false;
                         }
                         window.proposed_dimensions = Some(proposal);
-                        window.river_window.propose_dimensions(width, height);
+                        if window.nudge {
+                            window.nudge = false;
+                            window.nudge_restore = true;
+                            schedule_nudge_restore = true;
+                            window
+                                .river_window
+                                .propose_dimensions(width, (height - 1).max(1));
+                        } else {
+                            window.river_window.propose_dimensions(width, height);
+                        }
                     }
+                }
+
+                if schedule_nudge_restore {
+                    state.dimension_retry_at =
+                        Some(std::time::Instant::now() + std::time::Duration::from_millis(150));
                 }
 
                 if state.layer_focus_granted {
