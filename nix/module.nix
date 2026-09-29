@@ -36,6 +36,9 @@ let
       export MYWM_SHELL_DIR=${cfg.package}/share/mywm/quickshell
       export MYWM_POLKIT_AGENT=${pkgs.polkit_gnome}/libexec/polkit-gnome-authentication-agent-1
       export MYWM_SESSION_ENVIRONMENT=${sessionEnvironment}
+      ${lib.optionalString (cfg.greeterDirectory != null) ''
+        export MYWM_GREETER_DIR=${lib.escapeShellArg cfg.greeterDirectory}
+      ''}
       export MYWM_CONFIG="''${XDG_CONFIG_HOME:-$HOME/.config}/mywm/config.toml"
       export MYWM_MONITOR_CONFIG="''${XDG_CONFIG_HOME:-$HOME/.config}/kanshi/config"
 
@@ -67,6 +70,16 @@ in
       default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
       defaultText = lib.literalExpression "inputs.mywm.packages.\${pkgs.stdenv.hostPlatform.system}.default";
       description = "The mywm package to use.";
+    };
+
+    greeterDirectory = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Directory writable by the session user and readable by the greeter.
+        On each theme change mywm writes `background` (the wallpaper) and
+        `theme.css` (GTK color definitions) there.
+      '';
     };
   };
 

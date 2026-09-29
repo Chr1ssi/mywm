@@ -45,6 +45,7 @@ const GTK3: &str = include_str!("../assets/themes/gtk3.css");
 const GTK4: &str = include_str!("../assets/themes/gtk4.css");
 const NVIM: &str = include_str!("../assets/themes/nvim.lua");
 const VESKTOP: &str = include_str!("../assets/themes/vesktop.css");
+const GREETER: &str = include_str!("../assets/themes/greeter.css");
 
 pub fn state_path() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("MYWM_THEME_STATE").filter(|p| !p.is_empty()) {
@@ -79,6 +80,7 @@ pub fn apply(wallpaper: &Path) -> Result<()> {
     render(directory.join("gtk-4.css"), GTK4, &state)?;
     render(directory.join("nvim.lua"), NVIM, &state)?;
     render(directory.join("vesktop.css"), VESKTOP, &state)?;
+    sync_greeter(wallpaper, &state);
     notify_consumers(directory);
     println!("Theme generated from {}", wallpaper.display());
     Ok(())
@@ -150,6 +152,26 @@ fn write_atomic(path: &Path, contents: &str) -> Result<()> {
     fs::write(&temporary, contents)?;
     fs::rename(temporary, path)?;
     Ok(())
+}
+
+/// Mirrors wallpaper and colors into a directory the greeter user can read.
+fn sync_greeter(wallpaper: &Path, state: &ThemeState) {
+    let Some(directory) = std::env::var_os("MYWM_GREETER_DIR")
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+    else {
+        return;
+    };
+    let sync = || -> Result<()> {
+        render(directory.join("theme.css"), GREETER, state)?;
+        let temporary = directory.join("background.tmp");
+        fs::copy(wallpaper, &temporary)?;
+        fs::rename(temporary, directory.join("background"))?;
+        Ok(())
+    };
+    if let Err(error) = sync() {
+        eprintln!("Greeter theme not updated in {}: {error}", directory.display());
+    }
 }
 
 fn notify_consumers(directory: &Path) {
