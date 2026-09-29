@@ -126,3 +126,30 @@ pub fn apply(state: &mut State) {
     }
     set(state, enabled);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::VrrConfig;
+
+    #[test]
+    fn disabled_config_needs_no_output() {
+        assert!(VrrConfig::default().validate().is_ok());
+    }
+
+    #[test]
+    fn enabled_config_requires_output_and_command() {
+        let mut config = VrrConfig {
+            enabled: true,
+            ..VrrConfig::default()
+        };
+        assert!(config.validate().is_err());
+
+        config.output = "DP-1".into();
+        assert!(config.validate().is_ok());
+
+        config.command = vec![" ".into()];
+        assert!(config.validate().is_err());
+        config.command.clear();
+        assert!(config.validate().is_err());
+    }
+}

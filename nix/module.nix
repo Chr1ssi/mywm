@@ -47,9 +47,15 @@ let
     passthru.providedSessions = [ "mywm" ];
   } ''
     mkdir -p $out/share/wayland-sessions
-    substitute ${../config/mywm.desktop} $out/share/wayland-sessions/mywm.desktop \
-      --replace-fail "/usr/bin/env XDG_CURRENT_DESKTOP=river XDG_SESSION_DESKTOP=mywm XDG_SESSION_TYPE=wayland /usr/bin/river -c /home/chris/Projects/mywm/scripts/river-init" \
-      "${session}/bin/mywm-session"
+    cat > $out/share/wayland-sessions/mywm.desktop <<EOF
+    [Desktop Entry]
+    Name=mywm (River)
+    Comment=River mit mywm und eigener Quickshell-Oberfläche
+    Exec=${session}/bin/mywm-session
+    Type=Application
+    DesktopNames=river
+    Keywords=tiling;wayland;compositor;
+    EOF
   '';
 in
 {
@@ -58,8 +64,8 @@ in
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = self.packages.${pkgs.system}.default;
-      defaultText = lib.literalExpression "inputs.mywm.packages.\${pkgs.system}.default";
+      default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      defaultText = lib.literalExpression "inputs.mywm.packages.\${pkgs.stdenv.hostPlatform.system}.default";
       description = "The mywm package to use.";
     };
   };
@@ -73,6 +79,16 @@ in
     environment.systemPackages = [ session cfg.package pkgs.river ];
     services.displayManager.sessionPackages = [ sessionPackage ];
     security.pam.services.swaylock = { };
+
+    # Started by scripts/session-environment; pulls in graphical-session.target
+    # so systemd user services bound to it run inside the River session.
+    systemd.user.targets.mywm-session = {
+      description = "mywm compositor session";
+      bindsTo = [ "graphical-session.target" ];
+      wants = [ "graphical-session-pre.target" ];
+      after = [ "graphical-session-pre.target" ];
+      before = [ "graphical-session.target" ];
+    };
     programs.xwayland.enable = true;
 
     xdg.portal = {
@@ -86,8 +102,8 @@ in
         "org.freedesktop.impl.portal.Screenshot" = [ "wlr" ];
       };
       wlr.settings.screencast = {
-        chooser_type = "dmenu";
-        chooser_cmd = "${pkgs.zenity}/bin/zenity --list --title='Bildschirm oder Fenster freigeben' --column='Quelle' --width=800 --height=500";
+        chooser_type = lib.mkDefault "dmenu";
+        chooser_cmd = lib.mkDefault "${pkgs.zenity}/bin/zenity --list --title='Bildschirm oder Fenster freigeben' --column='Quelle' --width=800 --height=500";
       };
     };
   };

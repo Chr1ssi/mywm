@@ -9,10 +9,17 @@ export XDG_SESSION_TYPE=wayland
 export DISPLAY=${DISPLAY:-}
 dbus-update-activation-environment --systemd \
     WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE
+# NixOS (and other systemd-managed setups) provide a compositor-specific target
+# that pulls in graphical-session.target, which refuses direct manual starts.
+if systemctl --user cat mywm-session.target >/dev/null 2>&1; then
+    systemctl --user start mywm-session.target
+fi
 portals=(xdg-desktop-portal-gtk.service xdg-desktop-portal.service)
-if [[ -f /usr/share/xdg-desktop-portal/portals/wlr.portal ]]; then
+if [[ -f /usr/share/xdg-desktop-portal/portals/wlr.portal ]] \
+    || systemctl --user cat xdg-desktop-portal-wlr.service >/dev/null 2>&1; then
     portals=(xdg-desktop-portal-wlr.service "${portals[@]}")
 fi
-# Newly installed units may not have been loaded yet.
+# Newly installed units may not have been loaded yet. Start the portals only
+# after graphical-session.target satisfies the main portal's dependencies.
 systemctl --user reset-failed "${portals[@]}" 2>/dev/null || true
 systemctl --user --no-block restart "${portals[@]}"

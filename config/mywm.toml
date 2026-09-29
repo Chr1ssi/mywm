@@ -11,7 +11,8 @@ gaming_workspace = 3
 game_app_id_prefixes = ["steam_app_", "gamescope"]
 # Programm und Argumente getrennt, ohne Shell-Auswertung.
 terminal = ["kitty"]
-wallpaper_directory = "/home/chris/Bilder/Wallpaper"
+# Standard: $HOME/Bilder/Wallpaper. Muss ein absoluter Pfad sein.
+# wallpaper_directory = "/home/nutzer/Bilder/Wallpaper"
 
 # Optional: adaptive sync remains off except while a recognized game is visibly
 # fullscreen on this output. command receives wlr-randr-compatible arguments.
