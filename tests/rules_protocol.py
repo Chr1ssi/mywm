@@ -9,14 +9,13 @@ def main():
     with tempfile.TemporaryDirectory(prefix="mywm-rules-") as directory:
         config = Path(directory) / "config.toml"
         config.write_text('''
-workspaces = 3
 [appearance]
 gaps_inner = 0
 gaps_outer = 0
 border_width = 0
 [[rules]]
 app_id = "test.background"
-workspace = 2
+workspace = 3
 [[rules]]
 app_id = "test.float"
 floating = true
@@ -26,7 +25,7 @@ dialog = true
 floating = false
 [[rules]]
 app_id = "test.override"
-workspace = 3
+workspace = 4
 ''')
         peer = RiverPeer(config)
         try:
@@ -43,6 +42,12 @@ workspace = 3
             peer.cycle()
             anchor = peer.child("window")
             peer.cycle()
+            # Monitors own workspaces 1 and 2; park windows on new workspaces 3 and 4
+            # so rules have hidden targets to place windows on.
+            for _ in range(2):
+                parked = peer.child("window")
+                peer.cycle()
+                assert has(peer.key("n", shift=True), "hide", parked)
             background = peer.child("window")
             peer.event(background, "app_id", "test.background")
             requests = peer.cycle()
@@ -56,7 +61,7 @@ workspace = 3
             assert has(requests, "hide", dialog)
             assert not has(requests, "focus_window")
             peer.event(seat, "pointer_position", 100, 100)
-            requests = peer.key("2")
+            requests = peer.key("3")
             assert has(requests, "show", background) and has(requests, "show", dialog)
             assert has(requests, "set_tiled", dialog, edges=0)
             assert has(requests, "propose_dimensions", dialog, width=1280, height=720)
@@ -73,7 +78,7 @@ workspace = 3
             requests = peer.cycle()
             assert has(requests, "hide", override)
             assert not has(requests, "focus_window")
-            requests = peer.key("3")
+            requests = peer.key("4")
             assert has(requests, "show", override)
             assert has(requests, "set_tiled", override, edges=0)
             # Manual changes survive later app_id/title events and unrelated manage cycles.
@@ -97,7 +102,7 @@ workspace = 3
             requests = peer.cycle()
             assert has(requests, "hide", child_first) and has(requests, "hide", parent_second)
             assert not has(requests, "focus_window")
-            requests = peer.key("2")
+            requests = peer.key("3")
             assert has(requests, "show", child_first) and has(requests, "show", parent_second)
             assert has(requests, "set_tiled", child_first, edges=0)
             assert has(requests, "focus_window", seat, window=child_first)

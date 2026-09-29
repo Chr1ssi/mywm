@@ -93,8 +93,7 @@ pub(crate) fn run_actions(
                     .iter()
                     .position(|o| o.river_output.id().protocol_id() == id)
                 {
-                    if monitor_workspaces::owner(state, target).is_some_and(|owner| owner != output)
-                    {
+                    if !state.outputs[output].workspaces.contains(target) {
                         continue;
                     }
                     cancel_drag(state);
@@ -103,10 +102,16 @@ pub(crate) fn run_actions(
             }
             Action::Workspace(target) => {
                 cancel_drag(state);
-                if let Some(output) = monitor_workspaces::owner(state, target)
-                    .or_else(|| output_at_pointer(state).or(state.focused_output))
-                {
+                if let Some(output) = monitor_workspaces::owner(state, target) {
                     monitor_workspaces::select(state, output, target);
+                }
+            }
+            Action::NewWorkspace => {
+                cancel_drag(state);
+                if let Some(output) = output_at_pointer(state).or(state.focused_output)
+                    && let Some(number) = monitor_workspaces::create(state, output)
+                {
+                    monitor_workspaces::select(state, output, number);
                 }
             }
             Action::WorkspaceRelative(direction) => {
@@ -255,7 +260,8 @@ pub(crate) fn run_actions(
             | Action::Focus(_)
             | Action::Move(_)
             | Action::MoveToWorkspace(_)
-            | Action::MoveToWorkspaceRelative(_) => {
+            | Action::MoveToWorkspaceRelative(_)
+            | Action::MoveToNewWorkspace => {
                 let Some((window_id, output, floating)) = state
                     .windows
                     .iter()
@@ -308,6 +314,12 @@ pub(crate) fn run_actions(
                         if let Some(target) = relative_workspace(state, output, direction)
                             && workspace_accepts(state, target, &window_id)
                         {
+                            monitor_workspaces::move_window(state, output, target);
+                        }
+                    }
+                    Action::MoveToNewWorkspace => {
+                        cancel_drag(state);
+                        if let Some(target) = monitor_workspaces::create(state, output) {
                             monitor_workspaces::move_window(state, output, target);
                         }
                     }

@@ -40,7 +40,8 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     river_output: id,
                     position: None,
                     dimensions: None,
-                    workspaces: Workspaces::new(state.config.workspaces),
+                    // Renumbered by reconcile once the connector name is known.
+                    workspaces: Workspaces::new(1),
                     layer_output: None,
                     non_exclusive_area: None,
                     presentation_mode_set: false,
@@ -91,6 +92,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     manager.manage_finish();
                     return;
                 }
+                monitor_workspaces::prune(state);
                 update_drag(state);
                 layout(state);
                 fullscreen::apply(state);

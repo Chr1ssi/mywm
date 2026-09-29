@@ -5,24 +5,27 @@ use std::{
     path::PathBuf,
 };
 
+/// Leaves at least one number of 1 to 9 free for dynamic workspaces.
+const MAX_HOME_WORKSPACES: usize = crate::workspaces::MAX_NUMBER - 1;
+
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
-    pub workspace_outputs: std::collections::BTreeMap<String, Vec<usize>>,
+    /// Monitors in workspace order: the first gets workspace 1, the next 2, ...
+    pub workspace_outputs: Vec<String>,
+    pub gaming_output: Option<String>,
     pub async_outputs: Vec<String>,
     pub wallpaper_directory: String,
     pub idle: crate::session::IdleConfig,
     pub keyboard: crate::keyboard::KeyboardConfig,
-    pub workspaces: usize,
     pub terminal: Vec<String>,
     pub launcher: Vec<String>,
     pub program_bindings: BTreeMap<String, ProgramBinding>,
     pub bindings: Bindings,
     pub appearance: crate::appearance::Appearance,
     pub float_dialogs: bool,
-    pub gaming_workspace: Option<usize>,
     pub game_app_id_prefixes: Vec<String>,
     pub vrr: crate::vrr::VrrConfig,
     pub rules: Vec<crate::rules::Rule>,
@@ -31,14 +34,13 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            workspace_outputs: Default::default(),
+            workspace_outputs: Vec::new(),
             async_outputs: Vec::new(),
             wallpaper_directory: std::env::var("HOME")
                 .map(|home| format!("{home}/Bilder/Wallpaper"))
                 .unwrap_or_else(|_| "/usr/share/backgrounds".into()),
             idle: crate::session::IdleConfig::default(),
             keyboard: crate::keyboard::KeyboardConfig::default(),
-            workspaces: 9,
             terminal: vec!["kitty".into()],
             program_bindings: BTreeMap::new(),
             launcher: vec![
@@ -52,7 +54,7 @@ impl Default for Config {
             bindings: Bindings::default(),
             appearance: crate::appearance::Appearance::default(),
             float_dialogs: true,
-            gaming_workspace: None,
+            gaming_output: None,
             game_app_id_prefixes: Vec::new(),
             vrr: crate::vrr::VrrConfig::default(),
             rules: Vec::new(),
@@ -85,6 +87,8 @@ pub struct Bindings {
     workspace_next: Vec<String>,
     move_to_workspace_previous: Vec<String>,
     move_to_workspace_next: Vec<String>,
+    new_workspace: Vec<String>,
+    move_to_new_workspace: Vec<String>,
     toggle_floating: Vec<String>,
     toggle_scratchpad: Vec<String>,
     move_to_scratchpad: Vec<String>,
@@ -132,6 +136,8 @@ impl Default for Bindings {
             workspace_next: keys(&["Super+Ctrl+Right", "Super+Ctrl+Down"]),
             move_to_workspace_previous: keys(&["Super+Ctrl+Shift+Up"]),
             move_to_workspace_next: keys(&["Super+Ctrl+Shift+Down"]),
+            new_workspace: keys(&["Super+n"]),
+            move_to_new_workspace: keys(&["Super+Shift+n"]),
             workspace_modifiers: "Super".into(),
             move_to_workspace_modifiers: "Super+Shift".into(),
         }
@@ -158,26 +164,26 @@ impl Config {
 
     pub fn parse(text: &str) -> Result<Self> {
         let config: Self = toml::from_str(text)?;
-        if !config.workspace_outputs.is_empty() {
-            let mut seen = HashSet::new();
-            for (output, numbers) in &config.workspace_outputs {
-                if output.trim().is_empty() || numbers.is_empty() {
-                    return Err(
-                        "workspace_outputs requires nonempty monitor names and workspace lists"
-                            .into(),
-                    );
-                }
-                for number in numbers {
-                    if !(1..=config.workspaces).contains(number) || !seen.insert(*number) {
-                        return Err(
-                            "workspace_outputs must assign each workspace exactly once".into()
-                        );
-                    }
-                }
+        let mut seen = HashSet::new();
+        for output in &config.workspace_outputs {
+            if output.trim().is_empty() || !seen.insert(output) {
+                return Err(
+                    "workspace_outputs must list distinct, nonempty monitor names".into(),
+                );
             }
-            if seen.len() != config.workspaces {
-                return Err("workspace_outputs must assign every workspace".into());
-            }
+        }
+        if config.workspace_outputs.len() > MAX_HOME_WORKSPACES {
+            return Err(format!(
+                "workspace_outputs may list at most {MAX_HOME_WORKSPACES} monitors"
+            )
+            .into());
+        }
+        if config
+            .gaming_output
+            .as_ref()
+            .is_some_and(|output| output.trim().is_empty())
+        {
+            return Err("gaming_output must not be empty".into());
         }
         if config
             .async_outputs
@@ -185,19 +191,6 @@ impl Config {
             .any(|output| output.trim().is_empty())
         {
             return Err("async_outputs must not contain empty output names".into());
-        }
-        if !(1..=9).contains(&config.workspaces) {
-            return Err("workspaces must be between 1 and 9".into());
-        }
-        if config
-            .gaming_workspace
-            .is_some_and(|number| !(1..=config.workspaces).contains(&number))
-        {
-            return Err(format!(
-                "gaming_workspace must be between 1 and {}",
-                config.workspaces
-            )
-            .into());
         }
         if config
             .game_app_id_prefixes
@@ -234,7 +227,7 @@ impl Config {
             )?;
         }
         for (index, rule) in config.rules.iter().enumerate() {
-            rule.validate(config.workspaces)
+            rule.validate()
                 .map_err(|error| format!("rules[{}]: {error}", index + 1))?;
         }
         if !std::path::Path::new(&config.wallpaper_directory).is_absolute() {
@@ -345,6 +338,11 @@ impl Config {
                 Action::WorkspaceRelative(-1),
             ),
             (&self.bindings.workspace_next, Action::WorkspaceRelative(1)),
+            (&self.bindings.new_workspace, Action::NewWorkspace),
+            (
+                &self.bindings.move_to_new_workspace,
+                Action::MoveToNewWorkspace,
+            ),
             (
                 &self.bindings.move_to_workspace_previous,
                 Action::MoveToWorkspaceRelative(-1),
@@ -358,16 +356,15 @@ impl Config {
                 add(key, action)?;
             }
         }
-        for workspace in 0..self.workspaces {
+        for workspace in 1..=crate::workspaces::MAX_NUMBER {
             add(
-                &format!("{}+{}", self.bindings.workspace_modifiers, workspace + 1),
+                &format!("{}+{}", self.bindings.workspace_modifiers, workspace),
                 Action::Workspace(workspace),
             )?;
             add(
                 &format!(
                     "{}+{}",
-                    self.bindings.move_to_workspace_modifiers,
-                    workspace + 1
+                    self.bindings.move_to_workspace_modifiers, workspace
                 ),
                 Action::MoveToWorkspace(workspace),
             )?;
@@ -388,7 +385,7 @@ impl Config {
         self.bindings = new.bindings;
         self.appearance = new.appearance;
         self.float_dialogs = new.float_dialogs;
-        self.gaming_workspace = new.gaming_workspace;
+        self.gaming_output = new.gaming_output;
         self.game_app_id_prefixes = new.game_app_id_prefixes;
         self.vrr = new.vrr;
         self.rules = new.rules;
@@ -445,30 +442,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn workspace_outputs_must_assign_every_global_number_once() {
-        Config::parse("workspaces = 3\n[workspace_outputs]\nDP-1 = [1]\nDP-3 = [2, 3]").unwrap();
-        for mapping in [
-            "DP-1 = [1, 2]",
-            "DP-1 = [1, 2]\nDP-3 = [2, 3]",
-            "DP-1 = [0, 1, 2]",
-            "DP-1 = [1, 2, 4]",
-            "DP-1 = []",
+    fn workspace_outputs_list_distinct_monitors() {
+        let config = Config::parse("workspace_outputs = ['DP-3', 'HDMI-A-1']").unwrap();
+        assert_eq!(config.workspace_outputs, ["DP-3", "HDMI-A-1"]);
+        Config::parse("gaming_output = 'DP-3'").unwrap();
+        for invalid in [
+            "workspace_outputs = ['DP-1', 'DP-1']",
+            "workspace_outputs = ['']",
+            "workspace_outputs = ['a','b','c','d','e','f','g','h','i']",
+            "gaming_output = ''",
         ] {
-            assert!(
-                Config::parse(&format!("workspaces = 3\n[workspace_outputs]\n{mapping}")).is_err()
-            );
+            assert!(Config::parse(invalid).is_err(), "accepted {invalid}");
         }
     }
 
     #[test]
     fn defaults_and_partial_configuration() {
         let defaults = Config::parse("").unwrap();
-        assert_eq!(defaults.workspaces, 9);
-        assert_eq!(defaults.keybindings().unwrap().len(), 48);
+        assert_eq!(defaults.keybindings().unwrap().len(), 50);
         assert!(defaults.program_bindings.is_empty());
-        let config =
-            Config::parse("workspaces = 3\nterminal = ['kitty', '--single-instance']").unwrap();
-        assert_eq!(config.keybindings().unwrap().len(), 36);
+        let config = Config::parse("terminal = ['kitty', '--single-instance']").unwrap();
         assert_eq!(config.terminal[1], "--single-instance");
         // The shipped example has every setting commented out; it must parse both
         // as-is (defaults) and with all example settings enabled.
@@ -490,8 +483,8 @@ mod tests {
     #[test]
     fn invalid_config_is_rejected_before_connecting_to_river() {
         for text in [
-            "workspaces = 0",
-            "workspaces = 10",
+            "workspaces = 3",
+            "gaming_workspace = 3",
             "terminal = []",
             "launcher = []",
             "launcher = ['']",
@@ -502,12 +495,11 @@ mod tests {
             "[bindings]\nexit = ['Super+Bogus']",
             "[bindings]\nexit = ['Super+1']",
             "[bindings]\nexit = ['Super+Super+m']",
-            "workspaces =",
+            "workspace_outputs =",
             "[bindings]\npointer_modifiers = 'Bogus'",
             "[program_bindings.browser]\nkeys = []\ncommand = ['firefox']",
             "[program_bindings.browser]\nkeys = ['Super+b']\ncommand = []",
             "[program_bindings.browser]\nkeys = ['Super+q']\ncommand = ['firefox']",
-            "gaming_workspace = 10",
             "game_app_id_prefixes = ['']",
             "[vrr]\nenabled = true",
             "[vrr]\nenabled = true\noutput = ''",
@@ -534,7 +526,7 @@ mod tests {
             "[program_bindings.browser]\nkeys = ['Super+b', 'Super+Shift+b']\ncommand = ['firefox', '--private-window']",
         )
         .unwrap();
-        assert_eq!(config.keybindings().unwrap().len(), 50);
+        assert_eq!(config.keybindings().unwrap().len(), 52);
         let binding = config.program_bindings.get("browser").unwrap();
         assert_eq!(binding.command, ["firefox", "--private-window"]);
     }

@@ -15,13 +15,14 @@ nicht als universeller oder stabiler Desktop gedacht.
 - horizontales Scrolling-Layout mit individuell skalierbaren Spalten
 - globaler Floating-Scratchpad-Stack
 - Floating-Fenster mit Mausverschiebung und Größenänderung
-- unabhängige Workspaces pro Monitor sowie feste Monitorzuordnungen
+- ein fester Workspace pro Monitor plus dynamisch erzeugte Workspaces, die
+  verschwinden, sobald sie leer sind
 - gerichteter Monitorfokus und Fenstertransfer zwischen Monitoren
 - Hotplug-Unterstützung ohne Verlust der Workspace-Zuordnung
 - konfigurierbare Tastenkürzel, Programmstarter und Autostart-Befehle
 - Fensterregeln für App-ID, Dialoge, Workspace und Floating-Modus
 - Vollbild für Wayland- und Xwayland-Anwendungen
-- reservierbarer Gaming-Workspace mit automatischer App-Zuordnung
+- dynamischer Gaming-Workspace, der nur während eines Spiels existiert
 - Live-Reload für den größten Teil der TOML-Konfiguration
 - Gaps, Fokusrahmen und eine gemeinsame Farbpalette
 - Quickshell-Oberfläche mit Bar, Launcher, Wallpaper-Picker, Audio,
@@ -138,7 +139,9 @@ Eine Beispielkonfiguration (vollständig auskommentiert, es gelten die Standardw
 [`config/mywm.toml`](config/mywm.toml). Die wichtigsten Bereiche sind:
 
 ```toml
-workspaces = 9
+workspace_outputs = ["DP-3", "HDMI-A-1", "DP-1"]
+gaming_output = "DP-3"
+game_app_id_prefixes = ["steam_app_", "gamescope"]
 terminal = ["kitty"]
 wallpaper_directory = "/home/user/Pictures/Wallpapers"
 float_dialogs = true
@@ -147,10 +150,6 @@ float_dialogs = true
 enabled = true
 output = "DP-3"
 command = ["wlr-randr"]
-
-[workspace_outputs]
-DP-1 = [1, 2, 3]
-HDMI-A-1 = [4, 5, 6]
 
 [keyboard]
 layout = "de"
@@ -170,9 +169,30 @@ terminal = ["Super+Return"]
 launcher = ["Super+Space"]
 ```
 
-`workspace_outputs` ist optional. Wenn es gesetzt ist, muss jede Workspace-
-Nummer genau einmal einem Ausgang zugeordnet sein. Ohne die Tabelle stehen die
-Workspaces auf jedem Monitor unabhängig zur Verfügung.
+### Workspaces
+
+Jeder Monitor besitzt genau einen festen Workspace. `workspace_outputs` legt
+die Reihenfolge fest: der erste Monitor bekommt Workspace 1, der zweite 2 und so
+weiter. Nicht aufgeführte Monitore folgen danach in der Reihenfolge, in der sie
+erscheinen. Fällt ein Monitor aus, wandert sein Workspace vorübergehend auf einen
+verbleibenden Monitor und kehrt beim Wiedereinstecken zurück.
+
+Zusätzlich lassen sich Workspaces dynamisch anlegen (Nummern bis 9):
+
+- `Super+N` erzeugt einen neuen Workspace auf dem aktuellen Monitor und wechselt
+  dorthin. Ist bereits ein leerer dynamischer Workspace vorhanden, wird dieser
+  verwendet.
+- `Super+Shift+N` verschiebt das fokussierte Fenster in einen neuen Workspace,
+  ohne ihm zu folgen.
+- Ein dynamischer Workspace gehört zu dem Monitor, auf dem er erzeugt wurde, und
+  verschwindet, sobald er leer ist und nicht mehr angezeigt wird.
+
+Der Gaming-Workspace entsteht, sobald ein Fenster mit passender App-ID
+(`game_app_id_prefixes`) erscheint, auf `gaming_output` (Standard: Monitor mit
+Workspace 1) und wird sofort angezeigt. Er nimmt ausschließlich Spiele auf. Mit
+dem letzten Spielfenster verschwindet er, und der Monitor kehrt zum vorherigen
+Workspace zurück. In der Bar erscheint er als `G`; das Scratchpad (`S`) ist
+immer sichtbar.
 
 `vrr` ist optional und standardmäßig deaktiviert. Wenn aktiviert, schaltet mywm
 Adaptive Sync ausschließlich für ein sichtbares Vollbildfenster ein, dessen
@@ -191,7 +211,9 @@ werden. Das NixOS-Modul erwartet sie unter
 
 Regeln werden beim ersten Einordnen eines Fensters angewandt. App-IDs werden im
 mywm-Log ausgegeben und exakt, einschließlich Groß-/Kleinschreibung, verglichen.
-Bei mehreren passenden Regeln gewinnt die letzte Angabe je Eigenschaft.
+Bei mehreren passenden Regeln gewinnt die letzte Angabe je Eigenschaft. `workspace`
+nennt die Nummer wie in der Bar und wirkt nur, solange dieser Workspace existiert
+(feste Monitor-Workspaces immer, dynamische nur solange sie bestehen).
 
 ```toml
 [[rules]]
@@ -225,9 +247,11 @@ floating = true
 | Super + linke Maustaste | Floating-Fenster verschieben |
 | Super + rechte Maustaste | Fenster beziehungsweise Spalte skalieren |
 | Super + Q | fokussiertes Fenster schließen |
-| Super + 1…9 | Workspace wählen |
-| Super + Shift + 1…9 | Fenster auf einen Workspace verschieben |
-| Super + Ctrl + Pfeiltasten | Workspace des aktuellen Monitors wechseln |
+| Super + 1…9 | bestehenden Workspace wählen |
+| Super + Shift + 1…9 | Fenster auf einen bestehenden Workspace verschieben |
+| Super + N | neuen Workspace auf dem aktuellen Monitor anlegen |
+| Super + Shift + N | Fenster in einen neuen Workspace verschieben |
+| Super + Ctrl + Pfeiltasten | Workspace des aktuellen Monitors wechseln (auch dynamische und Gaming) |
 | Super + M | Sitzung beenden |
 
 Alle Bindings können geändert oder mit einer leeren Liste deaktiviert werden.
@@ -238,7 +262,7 @@ Befehle werden als Argumentlisten ohne Shell-Auswertung ausgeführt.
 
 `Super+Shift+R` validiert und lädt die Konfiguration neu. Tastenkürzel,
 Programmbindings, Terminal, Launcher, Darstellung, Wallpaper-Verzeichnis und
-Regeln werden live übernommen. Workspace-Anzahl und -Zuordnung,
+Regeln werden live übernommen. Die Monitorzuordnung (`workspace_outputs`),
 Tastaturbelegung, Idle-Zeiten und Autostart benötigen einen Sitzungsneustart.
 Bei einer ungültigen Datei bleibt die bisherige Konfiguration aktiv.
 
@@ -251,7 +275,7 @@ benachbarten Verzeichnis `../mywm-shell/quickshell`. Ein anderer Ort kann über
 
 Die Oberfläche umfasst:
 
-- Bar mit Workspaces, Uhr, Audio, Medien, Tray und Power-Menü
+- Bar mit dynamischen Workspaces, immer sichtbarem Scratchpad, Uhr, Audio, Medien, Tray und Power-Menü
 - App-Launcher auf Basis installierter Desktop-Einträge
 - Notification-Daemon mit Toasts und Verlauf
 - ein gemeinsames Wallpaper über die gesamte Monitoranordnung

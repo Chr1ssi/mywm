@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RiverPeer:
-    def __init__(self, config=None, layer_shell=False, output_names=None):
+    def __init__(self, config=None, layer_shell=False, output_names=None, ipc_socket=None):
         self.output_names = output_names or {}
         self.interfaces = {}
         river_protocol_dir = Path(os.environ.get(
@@ -47,6 +47,8 @@ class RiverPeer:
         env = dict(os.environ, WAYLAND_SOCKET=str(client.fileno()),
                    MYWM_CONFIG=str(config or ROOT / "tests/fixtures/plain.toml"))
         env.pop("MYWM_SOCKET", None)
+        if ipc_socket:
+            env["MYWM_SOCKET"] = str(ipc_socket)
         binary = os.environ.get("MYWM_TEST_BINARY", ROOT / "target/debug/mywm")
         self.process = subprocess.Popen([str(binary)], env=env,
                                         pass_fds=(client.fileno(),), stdout=subprocess.PIPE,
@@ -305,15 +307,16 @@ def main():
         requests = peer.cycle()
         assert has(requests, "set_position", peer.nodes[second], x=400, y=240)
         assert has(requests, "propose_dimensions", second, width=1360, height=750)
-        requests = peer.key("2")
+        # Super+n opens a new workspace (3: the monitors' fixed ones are 1 and 2).
+        requests = peer.key("n")
         assert has(requests, "op_end", seat) and has(requests, "inform_resize_end", second)
         assert has(requests, "hide", second)
         requests = peer.key("1")
         assert has(requests, "set_position", peer.nodes[second], x=400, y=240)
         # Moving between workspaces preserves floating state and geometry.
-        requests = peer.key("2", shift=True)
+        requests = peer.key("n", shift=True)
         assert has(requests, "hide", second)
-        requests = peer.key("2")
+        requests = peer.key("3")
         assert has(requests, "set_tiled", second, edges=0)
         assert has(requests, "set_position", peer.nodes[second], x=400, y=240)
         peer.key("1", shift=True)
@@ -328,7 +331,7 @@ def main():
         peer.event(seat, "pointer_enter", second)
         peer.event(peer.pointer_bindings[(0x110, 64)], "pressed")
         assert not has(peer.cycle(), "op_start_pointer", seat)
-        requests = peer.key("2")
+        requests = peer.key("n")
         assert has(requests, "hide", first) and has(requests, "hide", second)
         assert has(requests, "clear_focus", seat)
         third = peer.child("window")
@@ -338,11 +341,11 @@ def main():
         assert has(requests, "show", first) and has(requests, "show", second)
         assert has(requests, "hide", third)
         assert has(requests, "focus_window", seat, window=second)
-        requests = peer.key("2", shift=True)
+        requests = peer.key("3", shift=True)
         assert has(requests, "hide", second)
         assert has(requests, "focus_window", seat, window=first)
         assert has(requests, "propose_dimensions", first, width=1160)
-        requests = peer.key("2")
+        requests = peer.key("3")
         assert has(requests, "show", second) and has(requests, "show", third)
         assert has(requests, "focus_window", seat, window=second)
         # Closing a hidden window must not change the active workspace's focus.
@@ -352,17 +355,17 @@ def main():
         # A workspace switch on another monitor must leave the left side shown.
         peer.event(seat, "pointer_position", 2000, 100)
         peer.cycle()
-        requests = peer.key("3")
+        requests = peer.key("n")
         assert has(requests, "show", second) and has(requests, "show", third)
         assert has(requests, "clear_focus", seat)
         fourth = peer.child("window")
         peer.cycle()
-        # Removing the monitor migrates its windows without showing workspace 3.
+        # Removing the monitor migrates its windows without showing workspace 4.
         peer.event(right, "removed")
         requests = peer.cycle()
         assert has(requests, "hide", fourth)
         peer.event(seat, "pointer_position", 100, 100)
-        requests = peer.key("3")
+        requests = peer.key("4")
         assert has(requests, "show", fourth)
         assert has(requests, "hide", second) and has(requests, "hide", third)
         assert has(requests, "focus_window", seat, window=fourth)

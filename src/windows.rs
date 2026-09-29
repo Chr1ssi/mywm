@@ -81,9 +81,9 @@ pub(crate) fn run_dimension_retry(state: &mut State) {
     }
 }
 
+/// The gaming workspace is reserved for games and their dialogs.
 pub(crate) fn workspace_accepts(state: &State, workspace: usize, id: &ObjectId) -> bool {
-    state.config.gaming_workspace.map(|number| number - 1) != Some(workspace)
-        || is_game_window(state, id)
+    workspace != GAMING || is_game_window(state, id)
 }
 
 pub(crate) fn assign_windows(state: &mut State, default_output: usize) {
@@ -119,31 +119,29 @@ pub(crate) fn assign_windows(state: &mut State, default_output: usize) {
                 window.parent.is_some(),
                 state.config.float_dialogs,
             );
-            let (output, workspace) = inherited.unwrap_or((
+            let (output, active) = inherited.unwrap_or((
                 default_output,
                 state.outputs[default_output].workspaces.active,
             ));
             let id = window.river_window.id();
-            let mut workspace = placement.workspace.unwrap_or(workspace);
-            let gaming = state.config.gaming_workspace.map(|number| number - 1);
+            let mut workspace = placement
+                .workspace
+                .filter(|number| monitor_workspaces::owner(state, *number).is_some())
+                .unwrap_or(active);
             let game = is_game_window(state, &id);
-            if game {
-                if let Some(gaming) = gaming {
-                    workspace = gaming;
-                }
-            } else if gaming == Some(workspace) {
-                workspace = (0..state.config.workspaces)
-                    .find(|candidate| {
-                        Some(*candidate) != gaming
-                            && monitor_workspaces::owner(state, *candidate)
-                                .is_none_or(|owner| owner == output)
-                    })
-                    .unwrap_or(workspace);
-                state.outputs[output].workspaces.select(workspace);
+            let mut output = output;
+            if game && let Some(gaming) = monitor_workspaces::ensure_gaming(state) {
+                output = gaming;
+                workspace = GAMING;
+            } else if let Some(owner) = monitor_workspaces::owner(state, workspace) {
+                output = owner;
             }
-            let output = monitor_workspaces::owner(state, workspace).unwrap_or(output);
-            if game {
+            if workspace == GAMING && !game {
+                // Only games start on the gaming workspace; show the monitor's own instead.
+                workspace = state.outputs[output].workspaces.home;
                 state.outputs[output].workspaces.select(workspace);
+            } else if game {
+                state.outputs[output].workspaces.select(GAMING);
             }
             state.windows[index].output = Some(output);
             state.windows[index].floating = placement.floating;

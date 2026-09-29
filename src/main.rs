@@ -49,7 +49,7 @@ use river::river_xkb_bindings::river_xkb_bindings_seat_v1::RiverXkbBindingsSeatV
 use river::river_xkb_bindings::river_xkb_bindings_v1::RiverXkbBindingsV1;
 use wayland_client::backend::{ObjectId, WaylandError};
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle, protocol::wl_registry};
-use workspaces::{Workspace, Workspaces};
+use workspaces::{GAMING, Workspace, Workspaces};
 
 struct Window {
     river_window: RiverWindowV1,
@@ -136,6 +136,7 @@ enum Action {
     Terminal,
     Launcher,
     Exit,
+    /// Output protocol id, workspace number (0 is the gaming workspace).
     WorkspaceOnOutput(u32, usize),
     Focus(isize),
     Move(isize),
@@ -149,6 +150,8 @@ enum Action {
     WorkspaceRelative(isize),
     MoveToWorkspace(usize),
     MoveToWorkspaceRelative(isize),
+    NewWorkspace,
+    MoveToNewWorkspace,
     Program(usize),
 }
 

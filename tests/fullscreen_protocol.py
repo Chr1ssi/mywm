@@ -26,7 +26,7 @@ def main():
         assert has(requests, 'show', second)
         assert not has(requests, 'propose_dimensions', second)
         assert not has(peer.cycle(), 'fullscreen', second), 'do not renegotiate unchanged fullscreen'
-        requests = peer.key('2')
+        requests = peer.key('n')
         assert has(requests, 'exit_fullscreen', second)
         assert has(requests, 'hide', second)
         requests = peer.key('1')

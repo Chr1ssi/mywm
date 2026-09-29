@@ -36,17 +36,16 @@ impl Dispatch<RiverWindowV1, ()> for State {
                     item.app_id = app_id;
                 }
                 let id = window.id();
-                if let Some(gaming) = state.config.gaming_workspace.map(|number| number - 1)
-                    && is_game_window(state, &id)
+                if is_game_window(state, &id)
                     && let Some(source) = state
                         .windows
                         .iter()
                         .find(|item| item.river_window == *window)
                         .and_then(|item| item.output)
+                    && let Some(output) = monitor_workspaces::ensure_gaming(state)
                 {
-                    monitor_workspaces::move_window_id(state, source, gaming, id);
-                    let output = monitor_workspaces::owner(state, gaming).unwrap_or(source);
-                    monitor_workspaces::select(state, output, gaming);
+                    monitor_workspaces::move_window_id(state, source, GAMING, id);
+                    monitor_workspaces::select(state, output, GAMING);
                 }
             }
             Event::Title { title } => {

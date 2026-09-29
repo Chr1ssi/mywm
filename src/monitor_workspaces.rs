@@ -1,82 +1,164 @@
+//! Workspace ownership: one fixed workspace per monitor, dynamically created
+//! extras that live on the monitor they were created on, and a gaming
+//! workspace that exists only while a game runs.
+use crate::workspaces::{GAMING, Kind, MAX_NUMBER};
 use crate::{State, cancel_drag, focus_output};
+use std::collections::HashSet;
 use wayland_client::{
     Connection, Dispatch, Proxy, QueueHandle,
     protocol::wl_output::{self, WlOutput},
 };
 
-pub fn owner(state: &State, workspace: usize) -> Option<usize> {
-    if state.config.workspace_outputs.is_empty() {
-        return None;
-    }
-    let preferred = state
-        .config
-        .workspace_outputs
-        .iter()
-        .find(|(_, numbers)| numbers.contains(&(workspace + 1)))
-        .map(|(name, _)| name);
-    preferred
-        .and_then(|preferred| {
-            state.outputs.iter().position(|output| {
-                output
-                    .wl_global
-                    .and_then(|id| state.wl_outputs.get(&id))
-                    .and_then(|(_, name)| name.as_ref())
-                    == Some(preferred)
-            })
-        })
-        .or_else(|| (!state.outputs.is_empty()).then_some(0))
-}
-pub fn mask(state: &State, output: usize) -> u32 {
-    (0..state.config.workspaces).fold(0, |mask, workspace| {
-        mask | if owner(state, workspace).is_none_or(|i| i == output) {
-            1 << workspace
-        } else {
-            0
-        }
-    })
+pub fn output_name(state: &State, output: usize) -> Option<&str> {
+    state
+        .outputs
+        .get(output)?
+        .wl_global
+        .and_then(|id| state.wl_outputs.get(&id))
+        .and_then(|(_, name)| name.as_deref())
 }
 
-/// Keep the existing per-output storage, but each global workspace has one owner.
-/// Missing connectors temporarily fall back to the first remaining output.
+/// Number of the fixed workspace of `output`: its position in
+/// `workspace_outputs`, or the next free number for monitors not listed there.
+pub fn home_number(state: &State, output: usize) -> usize {
+    let listed = &state.config.workspace_outputs;
+    let position = |index| {
+        output_name(state, index).and_then(|name| listed.iter().position(|item| item == name))
+    };
+    if let Some(position) = position(output) {
+        return position + 1;
+    }
+    listed.len() + (0..output).filter(|index| position(*index).is_none()).count() + 1
+}
+
+/// The monitor showing the gaming workspace: `gaming_output`, else the monitor
+/// with workspace 1.
+pub fn gaming_output(state: &State) -> Option<usize> {
+    state
+        .config
+        .gaming_output
+        .as_deref()
+        .and_then(|wanted| {
+            (0..state.outputs.len()).find(|index| output_name(state, *index) == Some(wanted))
+        })
+        .or_else(|| (0..state.outputs.len()).find(|index| home_number(state, *index) == 1))
+        .or_else(|| (!state.outputs.is_empty()).then_some(0))
+}
+
+/// The monitor a workspace number lives on, if that workspace exists. The
+/// gaming workspace always belongs to the gaming monitor.
+pub fn owner(state: &State, number: usize) -> Option<usize> {
+    if number == GAMING {
+        return gaming_output(state);
+    }
+    state
+        .outputs
+        .iter()
+        .position(|output| output.workspaces.contains(number))
+}
+
+fn used_numbers(state: &State) -> HashSet<usize> {
+    let mut used: HashSet<_> = (1..=state.config.workspace_outputs.len()).collect();
+    for (index, output) in state.outputs.iter().enumerate() {
+        used.insert(home_number(state, index));
+        used.extend(output.workspaces.numbers());
+    }
+    used
+}
+
+fn free_number(state: &State) -> Option<usize> {
+    let used = used_numbers(state);
+    (1..=MAX_NUMBER).find(|number| !used.contains(number))
+}
+
+/// Create an extra workspace on `output` (or reuse its empty one) and return
+/// its number. `None` if all numbers are taken.
+pub fn create(state: &mut State, output: usize) -> Option<usize> {
+    if let Some(empty) = state.outputs[output]
+        .workspaces
+        .entries
+        .iter()
+        .find(|entry| entry.kind == Kind::Extra && entry.windows.is_empty())
+    {
+        return Some(empty.number);
+    }
+    let number = free_number(state)?;
+    state.outputs[output]
+        .workspaces
+        .ensure(number, Kind::Extra);
+    Some(number)
+}
+
+/// Make sure the gaming workspace exists on the gaming monitor; returns it.
+pub fn ensure_gaming(state: &mut State) -> Option<usize> {
+    let output = gaming_output(state)?;
+    state.outputs[output]
+        .workspaces
+        .ensure(GAMING, Kind::Gaming);
+    Some(output)
+}
+
+/// Give every monitor its home workspace under the right number, and bring
+/// workspaces back to their owning monitor (after hotplug, or once a
+/// connector name became known). Missing monitors' workspaces stay on the
+/// remaining ones until they return.
 pub fn reconcile(state: &mut State) {
-    if state.config.workspace_outputs.is_empty() || state.outputs.is_empty() {
+    if state.outputs.is_empty() {
         return;
     }
     let mut changed = false;
-    for workspace in 0..state.config.workspaces {
-        let target = owner(state, workspace).unwrap();
-        for source in 0..state.outputs.len() {
-            if source == target
-                || state.outputs[source].workspaces.entries[workspace]
-                    .windows
-                    .is_empty()
-            {
-                continue;
+    let homes: Vec<_> = (0..state.outputs.len())
+        .map(|index| home_number(state, index))
+        .collect();
+    // Extras never keep a number that a monitor's home workspace needs.
+    for output in 0..state.outputs.len() {
+        let colliding: Vec<_> = state.outputs[output]
+            .workspaces
+            .entries
+            .iter()
+            .filter(|entry| entry.kind == Kind::Extra && homes.contains(&entry.number))
+            .map(|entry| entry.number)
+            .collect();
+        for old in colliding {
+            if let Some(new) = free_number(state) {
+                state.outputs[output].workspaces.renumber(old, new);
+                changed = true;
             }
-            let moved = std::mem::take(&mut state.outputs[source].workspaces.entries[workspace]);
+        }
+    }
+    for (output, home) in homes.iter().enumerate() {
+        let workspaces = &mut state.outputs[output].workspaces;
+        if workspaces.home != *home {
+            workspaces.renumber(workspaces.home, *home);
+            changed = true;
+        }
+        workspaces.ensure(*home, Kind::Home);
+    }
+    let gaming = gaming_output(state).unwrap();
+    for source in 0..state.outputs.len() {
+        let misplaced: Vec<_> = state.outputs[source]
+            .workspaces
+            .entries
+            .iter()
+            .filter_map(|entry| {
+                let target = match entry.kind {
+                    Kind::Home => homes.iter().position(|home| *home == entry.number)?,
+                    Kind::Gaming => gaming,
+                    Kind::Extra => return None,
+                };
+                (target != source).then_some((entry.number, target))
+            })
+            .collect();
+        for (number, target) in misplaced {
+            let Some(moved) = state.outputs[source].workspaces.take(number) else {
+                continue;
+            };
             for window in &mut state.windows {
                 if moved.windows.contains(&window.river_window.id()) {
                     window.output = Some(target);
                 }
             }
-            let destination = &mut state.outputs[target].workspaces.entries[workspace];
-            if destination.windows.is_empty() {
-                *destination = moved;
-            } else {
-                destination.windows.extend(moved.windows);
-                if destination.focused.is_none() {
-                    destination.focused = moved.focused;
-                }
-            }
-            changed = true;
-        }
-    }
-    for output in 0..state.outputs.len() {
-        let allowed = mask(state, output);
-        if allowed != 0 && allowed & (1 << state.outputs[output].workspaces.active) == 0 {
-            state.outputs[output]
-                .workspaces
-                .select(allowed.trailing_zeros() as usize);
+            state.outputs[target].workspaces.insert(moved);
             changed = true;
         }
     }
@@ -84,9 +166,33 @@ pub fn reconcile(state: &mut State) {
         cancel_drag(state);
         let output = state
             .focused_output
-            .filter(|i| mask(state, *i) != 0)
-            .unwrap_or_else(|| owner(state, 0).unwrap());
+            .filter(|index| *index < state.outputs.len())
+            .unwrap_or(gaming);
         focus_output(state, output);
+    }
+}
+
+/// Remove extras that were left empty and the gaming workspace once its last
+/// window is gone; the monitor returns to the workspace it came from.
+pub fn prune(state: &mut State) {
+    let homes: Vec<_> = (0..state.outputs.len())
+        .map(|index| home_number(state, index))
+        .collect();
+    for output in 0..state.outputs.len() {
+        // A missing monitor's empty home workspace is no longer needed.
+        for entry in &mut state.outputs[output].workspaces.entries {
+            if entry.kind == Kind::Home && entry.windows.is_empty() && !homes.contains(&entry.number)
+            {
+                entry.kind = Kind::Extra;
+            }
+        }
+        if state.outputs[output].workspaces.prune()
+            && (state.focused_output == Some(output)
+                || crate::output_at_pointer(state) == Some(output))
+        {
+            cancel_drag(state);
+            focus_output(state, output);
+        }
     }
 }
 
@@ -103,7 +209,9 @@ pub fn move_window_id(
     workspace: usize,
     id: wayland_client::backend::ObjectId,
 ) {
-    let target = owner(state, workspace).unwrap_or(source);
+    let Some(target) = owner(state, workspace) else {
+        return;
+    };
     if source == target {
         let current = state.outputs[source].workspaces.location(&id);
         if current != Some(workspace) {
@@ -148,8 +256,7 @@ impl Dispatch<WlOutput, u32> for State {
 
 pub fn select(state: &mut State, output: usize, workspace: usize) {
     state.outputs[output].workspaces.select(workspace);
-    if !state.config.workspace_outputs.is_empty()
-        && crate::output_at_pointer(state) != Some(output)
+    if crate::output_at_pointer(state) != Some(output)
         && let Some(area) = state.outputs[output].work_area()
         && let Some(seat) = &state.seat
         && seat.version() >= 3

@@ -22,7 +22,6 @@ def main():
         command.chmod(0o755)
         config = base / "config.toml"
         config.write_text(
-            "workspaces = 2\n"
             "game_app_id_prefixes = ['steam_app_']\n"
             "[vrr]\n"
             "enabled = true\n"
@@ -46,7 +45,7 @@ def main():
             peer.cycle()
             peer.event(game, "fullscreen_requested", 0)
             peer.cycle()
-            peer.key("2")
+            peer.key("1")
 
             changes = wait_for(
                 lambda: log.read_text().splitlines()

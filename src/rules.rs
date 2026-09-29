@@ -12,13 +12,13 @@ pub struct Rule {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Placement {
-    /// Zero-based internally; configuration uses workspace numbers starting at 1.
+    /// Workspace number as shown in the bar (1 to 9).
     pub workspace: Option<usize>,
     pub floating: bool,
 }
 
 impl Rule {
-    pub fn validate(&self, workspaces: usize) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), String> {
         if self.app_id.is_none() && self.dialog.is_none() {
             return Err("at least one selector (app_id or dialog) is required".into());
         }
@@ -30,9 +30,12 @@ impl Rule {
         }
         if self
             .workspace
-            .is_some_and(|number| !(1..=workspaces).contains(&number))
+            .is_some_and(|number| !(1..=crate::workspaces::MAX_NUMBER).contains(&number))
         {
-            return Err(format!("workspace must be between 1 and {workspaces}"));
+            return Err(format!(
+                "workspace must be between 1 and {}",
+                crate::workspaces::MAX_NUMBER
+            ));
         }
         Ok(())
     }
@@ -57,7 +60,7 @@ pub fn resolve(
     };
     for rule in rules.iter().filter(|rule| rule.matches(app_id, dialog)) {
         if let Some(workspace) = rule.workspace {
-            placement.workspace = Some(workspace - 1);
+            placement.workspace = Some(workspace);
         }
         if let Some(floating) = rule.floating {
             placement.floating = floating;
@@ -80,7 +83,7 @@ mod tests {
         assert_eq!(
             resolve(&config.rules, Some("test.App"), true, true),
             Placement {
-                workspace: Some(2),
+                workspace: Some(3),
                 floating: false
             }
         );
@@ -113,14 +116,14 @@ mod tests {
         assert_eq!(
             resolve(&config.rules, Some("test.App"), false, true),
             Placement {
-                workspace: Some(1),
+                workspace: Some(2),
                 floating: false
             }
         );
         assert_eq!(
             resolve(&config.rules, Some("test.App"), true, false),
             Placement {
-                workspace: Some(1),
+                workspace: Some(2),
                 floating: true
             }
         );
@@ -143,6 +146,5 @@ mod tests {
                 "accepted {rule}"
             );
         }
-        assert!(Config::parse("workspaces = 2\n[[rules]]\ndialog = true\nworkspace = 3").is_err());
     }
 }

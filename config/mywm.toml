@@ -6,16 +6,21 @@
 # Einstellungen stehen ohne Leerzeichen nach dem "#", erklärende Kommentare mit.
 # Auf NixOS wird die echte Konfiguration über Home Manager erzeugt.
 
-# Neun globale Workspaces; Monitorzuordnung unten. Änderungen gelten nach Neustart.
-#workspaces = 9
+# Jeder Monitor hat einen festen Workspace, nummeriert in der Reihenfolge dieser
+# Liste (der erste Monitor bekommt 1, der zweite 2, ...). Nicht aufgeführte Monitore
+# folgen danach. Zusätzliche Workspaces (bis Nummer 9) entstehen dynamisch auf dem
+# aktuellen Monitor und verschwinden wieder, sobald sie leer sind und man sie verlässt.
+# Änderungen gelten nach Neustart.
+#workspace_outputs = ["DP-3", "HDMI-A-1", "DP-1"]
 # Outputs not listed here use tear-free VSync presentation.
 #async_outputs = ["DP-3"]
 # Fenster mit Elternfenster (z. B. Dateidialoge) standardmäßig frei schwebend.
 #float_dialogs = true
-# Workspace 3 liegt auf DP-3 (Hauptmonitor) und ist ausschließlich für Spiele reserviert.
-# Spiele werden automatisch dorthin gelegt; andere Fenster können weder dort starten
-# noch dorthin verschoben werden.
-#gaming_workspace = 3
+# Der Gaming-Workspace entsteht auf diesem Monitor, sobald ein Spiel startet, und
+# verschwindet mit dem letzten Spielfenster wieder (Standard: Monitor mit Workspace 1).
+# Er ist ausschließlich für Spiele reserviert: andere Fenster können weder dort
+# starten noch dorthin verschoben werden. Ohne Präfixe gibt es keinen Gaming-Workspace.
+#gaming_output = "DP-3"
 #game_app_id_prefixes = ["steam_app_", "gamescope"]
 # Programm und Argumente getrennt, ohne Shell-Auswertung.
 #terminal = ["kitty"]
@@ -28,11 +33,6 @@
 #enabled = false
 #output = "DP-3"
 #command = ["wlr-randr"]
-
-#[workspace_outputs]
-#DP-3 = [1, 2, 3]
-#HDMI-A-1 = [4, 5, 6]
-#DP-1 = [7, 8, 9]
 
 # Sekunden; 0 deaktiviert den jeweiligen Inaktivitäts-Timer.
 #[idle]
@@ -84,13 +84,17 @@
 #focus_right = ["Super+l", "Super+Right"]
 #move_left = ["Super+Shift+h"]
 #move_right = ["Super+Shift+l"]
-# Workspace auf dem aktuellen Monitor wechseln (zyklisch).
+# Workspace auf dem aktuellen Monitor wechseln (zyklisch, inklusive dynamischer).
 #workspace_previous = ["Super+Ctrl+Left", "Super+Ctrl+Up"]
 #workspace_next = ["Super+Ctrl+Right", "Super+Ctrl+Down"]
 # Fenster in den vorigen/nächsten Workspace des Monitors verschieben.
 #move_to_workspace_previous = ["Super+Ctrl+Shift+Up"]
 #move_to_workspace_next = ["Super+Ctrl+Shift+Down"]
-# Zusammen mit den Ziffern 1 bis workspaces.
+# Neuen Workspace auf dem aktuellen Monitor anlegen und wechseln bzw. das
+# fokussierte Fenster in einen neuen Workspace verschieben.
+#new_workspace = ["Super+n"]
+#move_to_new_workspace = ["Super+Shift+n"]
+# Zusammen mit den Ziffern 1 bis 9 (Nummern bestehender Workspaces).
 #workspace_modifiers = "Super"
 #move_to_workspace_modifiers = "Super+Shift"
 
@@ -109,7 +113,7 @@
 #
 #[[rules]]
 #app_id = "firefox"
-#workspace = 2
+#workspace = 2  # Nummer wie in der Bar; wirkt nur, solange dieser Workspace existiert
 #
 #[[rules]]
 #app_id = "org.gnome.Calculator"

@@ -47,7 +47,7 @@ def main():
         assert has(requests, "show", window) and has(requests, "focus_window", seat, window=window)
         # An exclusive launcher owns focus even when the user changes workspaces.
         peer.event(layer_seat, "focus_exclusive")
-        requests = peer.key("2")
+        requests = peer.key("n")
         assert not has(requests, "focus_window") and not has(requests, "clear_focus")
         peer.event(layer_seat, "focus_none")
         assert has(peer.cycle(), "clear_focus", seat)

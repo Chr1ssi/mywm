@@ -135,13 +135,14 @@ fn parse(line: &str, state: &State) -> Option<Action> {
         ["v1", "scratchpad"] => Some(Action::ToggleScratchpad),
         ["v1", "workspace", output, workspace] => {
             let output = output.parse::<u32>().ok()?;
-            let workspace = workspace.parse::<usize>().ok()?.checked_sub(1)?;
-            (workspace < state.config.workspaces
-                && state.outputs.iter().enumerate().any(|(index, o)| {
-                    o.river_output.id().protocol_id() == output
-                        && crate::monitor_workspaces::mask(state, index) & (1 << workspace) != 0
-                }))
-            .then_some(Action::WorkspaceOnOutput(output, workspace))
+            let workspace = workspace.parse::<usize>().ok()?;
+            state
+                .outputs
+                .iter()
+                .any(|o| {
+                    o.river_output.id().protocol_id() == output && o.workspaces.contains(workspace)
+                })
+                .then_some(Action::WorkspaceOnOutput(output, workspace))
         }
         _ => None,
     }
@@ -150,18 +151,16 @@ fn snapshot(state: &State) -> String {
     let outputs: Vec<_> = state
         .outputs
         .iter()
-        .enumerate()
-        .filter_map(|(index, o)| {
+        .filter_map(|o| {
             let (x, y) = o.position?;
             let (width, height) = o.dimensions?;
-            let occupied = o
+            // "number:occupied" per workspace in display order; number 0 is gaming.
+            let workspaces: Vec<_> = o
                 .workspaces
                 .entries
                 .iter()
-                .enumerate()
-                .fold(0u32, |mask, (i, w)| {
-                    mask | if w.windows.is_empty() { 0 } else { 1 << i }
-                });
+                .map(|w| format!("{}:{}", w.number, u8::from(!w.windows.is_empty())))
+                .collect();
             let tiled: Vec<_> = o
                 .workspaces
                 .current()
@@ -184,23 +183,21 @@ fn snapshot(state: &State) -> String {
             });
             let (left, right) = overflow_directions(area, geometries);
             Some(format!(
-                "{},{},{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},{}",
                 o.river_output.id().protocol_id(),
                 x,
                 y,
                 width,
                 height,
-                o.workspaces.active + 1,
-                occupied,
-                crate::monitor_workspaces::mask(state, index),
+                o.workspaces.active,
                 u8::from(left),
-                u8::from(right)
+                u8::from(right),
+                workspaces.join("|")
             ))
         })
         .collect();
     format!(
-        "v1 state {} {}\nv1 scratchpad {} {}\nv1 locked {}\n",
-        state.config.workspaces,
+        "v1 state {}\nv1 scratchpad {} {}\nv1 locked {}\n",
         outputs.join(";"),
         u8::from(state.scratchpad_visible),
         u8::from(!state.scratchpad.windows.is_empty()),

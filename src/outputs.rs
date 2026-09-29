@@ -1,16 +1,14 @@
 //! Output focus, adjacency and pointer-to-output helpers.
 use crate::*;
 
+/// The workspace `direction` steps away on this monitor, wrapping around.
 pub(crate) fn relative_workspace(state: &State, output: usize, direction: isize) -> Option<usize> {
-    let allowed = monitor_workspaces::mask(state, output);
-    let workspaces: Vec<_> = (0..state.config.workspaces)
-        .filter(|workspace| allowed & (1 << workspace) != 0)
-        .collect();
-    let current = state.outputs[output].workspaces.active;
-    let position = workspaces
+    let workspaces = &state.outputs[output].workspaces;
+    let numbers: Vec<_> = workspaces.numbers().collect();
+    let position = numbers
         .iter()
-        .position(|workspace| *workspace == current)?;
-    Some(workspaces[(position as isize + direction).rem_euclid(workspaces.len() as isize) as usize])
+        .position(|number| *number == workspaces.active)?;
+    Some(numbers[(position as isize + direction).rem_euclid(numbers.len() as isize) as usize])
 }
 
 pub(crate) fn focus_output(state: &mut State, output: usize) {
