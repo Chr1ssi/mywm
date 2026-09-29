@@ -1,6 +1,13 @@
 //! Window assignment, removal, game detection and the size-proposal retry logic.
 use crate::*;
 
+/// How long a window may disagree with the proposed size before we intervene.
+pub(crate) const DIMENSION_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(120);
+/// Size difference (in logical pixels) above which a mismatch counts as stale geometry.
+const STALE_GEOMETRY_THRESHOLD: i32 = 48;
+/// Delay between the one-pixel nudge and proposing the real size again.
+pub(crate) const NUDGE_RESTORE_DELAY: std::time::Duration = std::time::Duration::from_millis(80);
+
 pub(crate) fn is_game_window(state: &State, id: &ObjectId) -> bool {
     let mut current = Some(id.clone());
     for _ in 0..=state.windows.len() {
@@ -33,6 +40,17 @@ pub(crate) fn needs_dimension_retry(window: &Window) -> bool {
         && !window.proposal_retried
 }
 
+/// Whether the reported size is so far from the proposal that the window
+/// cannot merely be snapping to a size grid.
+fn is_stale_geometry(window: &Window) -> bool {
+    match (window.actual_dimensions, window.proposed_dimensions) {
+        (Some((aw, ah)), Some((pw, ph))) => {
+            (aw - pw).abs() > STALE_GEOMETRY_THRESHOLD || (ah - ph).abs() > STALE_GEOMETRY_THRESHOLD
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn run_dimension_retry(state: &mut State) {
     let Some(deadline) = state.dimension_retry_at else {
         return;
@@ -52,7 +70,9 @@ pub(crate) fn run_dimension_retry(state: &mut State) {
             // border) after the output changed. A differing size makes it commit
             // fresh geometry.
             window.proposal_retried = true;
-            window.nudge = true;
+            // Terminals round to whole cells, so small differences are normal
+            // and must not make the window jump.
+            window.nudge = is_stale_geometry(window);
             retry_layout = true;
         }
     }

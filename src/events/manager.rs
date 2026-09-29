@@ -133,7 +133,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
 
                 if schedule_nudge_restore {
                     state.dimension_retry_at =
-                        Some(std::time::Instant::now() + std::time::Duration::from_millis(150));
+                        Some(std::time::Instant::now() + NUDGE_RESTORE_DELAY);
                 }
 
                 if state.layer_focus_granted {
@@ -179,7 +179,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     && state.windows.iter().any(needs_dimension_retry)
                 {
                     state.dimension_retry_at =
-                        Some(std::time::Instant::now() + std::time::Duration::from_millis(500));
+                        Some(std::time::Instant::now() + DIMENSION_RETRY_DELAY);
                 }
                 for output in &mut state.outputs {
                     if !output.presentation_mode_set
