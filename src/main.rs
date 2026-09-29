@@ -151,6 +151,8 @@ enum Action {
     MoveToWorkspace(usize),
     MoveToWorkspaceRelative(isize),
     NewWorkspace,
+    /// Output protocol id.
+    NewWorkspaceOnOutput(u32),
     MoveToNewWorkspace,
     Program(usize),
 }

@@ -106,6 +106,17 @@ pub(crate) fn run_actions(
                     monitor_workspaces::select(state, output, target);
                 }
             }
+            Action::NewWorkspaceOnOutput(id) => {
+                if let Some(output) = state
+                    .outputs
+                    .iter()
+                    .position(|o| o.river_output.id().protocol_id() == id)
+                    && let Some(number) = monitor_workspaces::create(state, output)
+                {
+                    cancel_drag(state);
+                    monitor_workspaces::select(state, output, number);
+                }
+            }
             Action::NewWorkspace => {
                 cancel_drag(state);
                 if let Some(output) = output_at_pointer(state).or(state.focused_output)

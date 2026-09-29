@@ -89,6 +89,11 @@ def main():
             peer.event(peer.bindings[(0xff53, SUPER | CTRL)], "pressed")
             peer.cycle()
             main_shows(1, [(1, 0)])
+            # The bar's "+" button asks for a workspace on its own monitor.
+            bar.send(f"new-workspace {main_output}")
+            bar.expect(main_output, 4, [(1, 0), (4, 0)], drive=peer.cycle)
+            peer.key("1")
+            main_shows(1, [(1, 0)])
             # Workspaces that do not exist cannot be selected.
             peer.key("7")
             main_shows(1, [(1, 0)])

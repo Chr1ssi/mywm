@@ -184,6 +184,7 @@ Zusätzlich lassen sich Workspaces dynamisch anlegen (Nummern bis 9):
   verwendet.
 - `Super+Shift+N` verschiebt das fokussierte Fenster in einen neuen Workspace,
   ohne ihm zu folgen.
+- Der `+`-Button in der Bar tut dasselbe für den Monitor, auf dem er angeklickt wird.
 - Ein dynamischer Workspace gehört zu dem Monitor, auf dem er erzeugt wurde, und
   verschwindet, sobald er leer ist und nicht mehr angezeigt wird.
 

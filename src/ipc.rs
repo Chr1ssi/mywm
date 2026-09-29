@@ -133,6 +133,14 @@ fn parse(line: &str, state: &State) -> Option<Action> {
         ["v1", "logout"] => Some(Action::Exit),
         ["v1", "theme-reload"] => Some(Action::Reload),
         ["v1", "scratchpad"] => Some(Action::ToggleScratchpad),
+        ["v1", "new-workspace", output] => {
+            let output = output.parse::<u32>().ok()?;
+            state
+                .outputs
+                .iter()
+                .any(|o| o.river_output.id().protocol_id() == output)
+                .then_some(Action::NewWorkspaceOnOutput(output))
+        }
         ["v1", "workspace", output, workspace] => {
             let output = output.parse::<u32>().ok()?;
             let workspace = workspace.parse::<usize>().ok()?;
