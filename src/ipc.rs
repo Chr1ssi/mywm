@@ -69,10 +69,15 @@ impl Server {
         let snapshot = snapshot(state);
         self.clients.retain_mut(|client| {
             let mut buf = [0; 1024];
+            let mut closed = false;
             // Bound work per client, even when a peer continuously writes.
             for _ in 0..4 {
                 match client.socket.read(&mut buf) {
-                    Ok(0) => return false,
+                    // One-shot senders close right after writing; still handle their commands.
+                    Ok(0) => {
+                        closed = true;
+                        break;
+                    }
                     Ok(n) => client.input.extend_from_slice(&buf[..n]),
                     Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
                     Err(_) => return false,
@@ -96,6 +101,9 @@ impl Server {
                     "v1 error invalid-command\n"
                 };
                 client.output.extend_from_slice(reply.as_bytes());
+            }
+            if closed {
+                return false;
             }
             if client.snapshot != snapshot {
                 client.output.extend_from_slice(snapshot.as_bytes());
