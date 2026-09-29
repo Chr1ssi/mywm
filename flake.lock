@@ -7,11 +7,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1790698122,
-        "narHash": "sha256-CSk68U8sqQ62pZx3TXo2V3QLoC42GvvgBS/mZ08POp0=",
+        "lastModified": 1790699324,
+        "narHash": "sha256-kK++HiNK2/+Eo8ssKsBJVG7qnoER0Cn94TlTtL/rUW0=",
         "owner": "Chr1ssi",
         "repo": "mywm-shell",
-        "rev": "3105e8ac2233838055aa156d014256339136056d",
+        "rev": "97e7ed2d1f26f78bc4c41536e12b09355b12509a",
         "type": "github"
       },
       "original": {
