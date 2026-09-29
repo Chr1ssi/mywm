@@ -470,7 +470,21 @@ mod tests {
             Config::parse("workspaces = 3\nterminal = ['kitty', '--single-instance']").unwrap();
         assert_eq!(config.keybindings().unwrap().len(), 36);
         assert_eq!(config.terminal[1], "--single-instance");
-        Config::parse(include_str!("../config/mywm.toml")).unwrap();
+        // The shipped example has every setting commented out; it must parse both
+        // as-is (defaults) and with all example settings enabled.
+        let example = include_str!("../config/mywm.toml");
+        Config::parse(example).unwrap();
+        let enabled = example
+            .lines()
+            .map(|line| match line.strip_prefix('#') {
+                Some(rest) if rest.starts_with(|c: char| c.is_ascii_alphabetic() || c == '[') => {
+                    rest
+                }
+                _ => line,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        Config::parse(&enabled).unwrap();
     }
 
     #[test]

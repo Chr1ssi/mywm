@@ -134,7 +134,7 @@ mywm lädt die erste vorhandene Konfiguration in dieser Reihenfolge:
 4. die mitgelieferte Beispielkonfiguration beim Start über `river-init`
 5. eingebaute Standardwerte beim direkten Start des Binaries
 
-Eine vollständige Beispielkonfiguration liegt unter
+Eine Beispielkonfiguration (vollständig auskommentiert, es gelten die Standardwerte) liegt unter
 [`config/mywm.toml`](config/mywm.toml). Die wichtigsten Bereiche sind:
 
 ```toml
