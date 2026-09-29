@@ -98,6 +98,9 @@ struct State {
     focused_output: Option<usize>,
     pointer_position: Option<(i32, i32)>,
     pointer_window: Option<ObjectId>,
+    /// The pointer moved since focus last followed it (windows scrolling under a
+    /// resting pointer must not steal keyboard focus).
+    pointer_moved: bool,
     pointer_bindings: Vec<RiverPointerBindingV1>,
     pending_drag: Option<(ObjectId, PointerAction)>,
     drag: Option<Drag>,
@@ -259,6 +262,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         focused_output: None,
         pointer_position: None,
         pointer_window: None,
+        pointer_moved: false,
         pointer_bindings: Vec::new(),
         pending_drag: None,
         drag: None,

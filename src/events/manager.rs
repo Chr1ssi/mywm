@@ -173,6 +173,8 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     }
                 }
                 state.layer_focus_granted = false;
+                // Motion and enter events of one batch arrive before the manage sequence.
+                state.pointer_moved = false;
                 manager.manage_finish();
             }
 

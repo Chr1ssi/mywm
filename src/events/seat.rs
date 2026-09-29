@@ -43,6 +43,7 @@ impl Dispatch<RiverSeatV1, ()> for State {
         match event {
             river::river_window_management::river_seat_v1::Event::PointerEnter { window } => {
                 state.pointer_window = Some(window.id());
+                focus_hovered(state);
             }
             river::river_window_management::river_seat_v1::Event::PointerLeave => {
                 state.pointer_window = None;
@@ -57,31 +58,14 @@ impl Dispatch<RiverSeatV1, ()> for State {
             }
             river::river_window_management::river_seat_v1::Event::PointerPosition { x, y } => {
                 state.pointer_position = Some((x, y));
+                state.pointer_moved = true;
 
                 update_focused_output(state, x, y);
+                focus_hovered(state);
             }
 
             river::river_window_management::river_seat_v1::Event::WindowInteraction { window } => {
-                let Some(window_index) = state
-                    .windows
-                    .iter()
-                    .position(|item| item.river_window.id() == window.id())
-                else {
-                    println!("Window interaction for unknown window");
-                    return;
-                };
-
-                if state.scratchpad_visible && state.scratchpad.windows.contains(&window.id()) {
-                    state.scratchpad.focused = Some(window.id());
-                    focus_scratchpad(state);
-                    return;
-                }
-
-                if let Some(output) = state.windows[window_index].output
-                    && state.outputs[output].workspaces.focus(&window.id())
-                {
-                    focus_output(state, output);
-                }
+                focus_window(state, window.id());
             }
 
             _ => {}

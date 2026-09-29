@@ -26,6 +26,47 @@ pub(crate) fn focus_output(state: &mut State, output: usize) {
     }
 }
 
+/// Focus a window the user interacted with, in its workspace or the scratchpad.
+pub(crate) fn focus_window(state: &mut State, id: ObjectId) {
+    let Some(output) = state
+        .windows
+        .iter()
+        .find(|item| item.river_window.id() == id)
+        .map(|item| item.output)
+    else {
+        println!("Window interaction for unknown window");
+        return;
+    };
+    if state.scratchpad_visible && state.scratchpad.windows.contains(&id) {
+        state.scratchpad.focused = Some(id);
+        focus_scratchpad(state);
+        return;
+    }
+    if let Some(output) = output
+        && state.outputs[output].workspaces.focus(&id)
+    {
+        focus_output(state, output);
+    }
+}
+
+/// Focus follows the pointer, but only once it actually moved.
+pub(crate) fn focus_hovered(state: &mut State) {
+    if !state.pointer_moved
+        || state.drag.is_some()
+        || state.session_locked
+        || state.layer_focus != LayerFocus::None
+    {
+        return;
+    }
+    let Some(id) = state.pointer_window.clone() else {
+        return;
+    };
+    if state.focused_window.as_ref() != Some(&id) {
+        state.pointer_moved = false;
+        focus_window(state, id);
+    }
+}
+
 pub(crate) fn focus_scratchpad(state: &mut State) {
     state.focused_window = state.scratchpad.focused.clone();
     state.focus_dirty = true;

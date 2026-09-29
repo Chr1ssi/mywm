@@ -15,6 +15,8 @@ nicht als universeller oder stabiler Desktop gedacht.
 - horizontales Scrolling-Layout mit individuell skalierbaren Spalten
 - globaler Floating-Scratchpad-Stack
 - Floating-Fenster mit Mausverschiebung und Größenänderung
+- Fokus folgt der Maus: Bewegt man den Zeiger über ein Fenster, erhält es den
+  Fokus (nicht aber, wenn nur ein Fenster unter den ruhenden Zeiger scrollt)
 - ein fester Workspace pro Monitor plus dynamisch erzeugte Workspaces, die
   verschwinden, sobald sie leer sind
 - gerichteter Monitorfokus und Fenstertransfer zwischen Monitoren
