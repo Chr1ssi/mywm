@@ -44,6 +44,47 @@ fn output_connected(state: &State) -> bool {
         .any(|(_, name)| name.as_deref() == Some(state.config.vrr.output.as_str()))
 }
 
+fn output_name(state: &State, index: usize) -> Option<&str> {
+    state.outputs[index]
+        .wl_global
+        .and_then(|global| state.wl_outputs.get(&global))
+        .and_then(|(_, name)| name.as_deref())
+}
+
+fn game_fullscreen_on(state: &State, output: usize) -> bool {
+    !state.session_locked
+        && state.windows.iter().any(|window| {
+            window.fullscreen_output.is_some()
+                && window.output == Some(output)
+                && crate::is_game_window(state, &window.river_window.id())
+        })
+}
+
+/// Tearing (async presentation) is allowed on the configured outputs only
+/// while a game is visibly fullscreen there; everything else stays on vsync.
+pub fn apply_presentation(state: &mut State) {
+    use crate::river::river_window_management::river_output_v1::PresentationMode;
+    let wanted: Vec<Option<bool>> = (0..state.outputs.len())
+        .map(|index| {
+            let name = output_name(state, index)?;
+            let allowed = state.config.async_outputs.iter().any(|o| o == name);
+            Some(allowed && game_fullscreen_on(state, index))
+        })
+        .collect();
+    for (output, wanted) in state.outputs.iter_mut().zip(wanted) {
+        let Some(wanted) = wanted else { continue };
+        if output.presentation_async == Some(wanted) || output.river_output.version() < 4 {
+            continue;
+        }
+        output.river_output.set_presentation_mode(if wanted {
+            PresentationMode::Async
+        } else {
+            PresentationMode::Vsync
+        });
+        output.presentation_async = Some(wanted);
+    }
+}
+
 fn desired(state: &State) -> bool {
     if !state.config.vrr.enabled || state.session_locked {
         return false;

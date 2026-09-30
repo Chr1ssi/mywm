@@ -44,7 +44,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                     workspaces: Workspaces::new(1),
                     layer_output: None,
                     non_exclusive_area: None,
-                    presentation_mode_set: false,
+                    presentation_async: None,
                 });
 
                 layer_shell::setup(state, qh);
@@ -97,6 +97,7 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                 layout(state);
                 fullscreen::apply(state);
                 vrr::apply(state);
+                vrr::apply_presentation(state);
                 let mut schedule_nudge_restore = false;
                 for window in &mut state.windows {
                     // The WM supplies focus borders, but no title bar.
@@ -184,28 +185,6 @@ impl Dispatch<RiverWindowManagerV1, ()> for State {
                 {
                     state.dimension_retry_at =
                         Some(std::time::Instant::now() + DIMENSION_RETRY_DELAY);
-                }
-                for output in &mut state.outputs {
-                    if !output.presentation_mode_set
-                        && output.river_output.version() >= 4
-                        && let Some(name) = output
-                            .wl_global
-                            .and_then(|global| state.wl_outputs.get(&global))
-                            .and_then(|(_, name)| name.as_deref())
-                    {
-                        let mode = if state
-                            .config
-                            .async_outputs
-                            .iter()
-                            .any(|configured| configured == name)
-                        {
-                            river::river_window_management::river_output_v1::PresentationMode::Async
-                        } else {
-                            river::river_window_management::river_output_v1::PresentationMode::Vsync
-                        };
-                        output.river_output.set_presentation_mode(mode);
-                        output.presentation_mode_set = true;
-                    }
                 }
                 for window in state
                     .windows

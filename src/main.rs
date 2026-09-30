@@ -82,7 +82,7 @@ struct Output {
     workspaces: Workspaces<ObjectId>,
     layer_output: Option<RiverLayerShellOutputV1>,
     non_exclusive_area: Option<Rect>,
-    presentation_mode_set: bool,
+    presentation_async: Option<bool>,
 }
 
 struct State {
